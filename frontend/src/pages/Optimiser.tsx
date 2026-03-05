@@ -250,7 +250,8 @@ export default function Optimiser() {
               <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-24 h-24 rounded-full border-2 border-emerald-500/10 mix-blend-overlay" />
             </div>
 
-            <div className="relative z-10 w-full h-full p-4 overflow-y-auto">
+            <div className="relative z-10 w-full h-full p-4 overflow-y-auto flex flex-col">
+              {/* Field UI */}
               {!result && !loading && (
                 <div className="h-full flex flex-col items-center justify-center text-center px-6 min-h-[400px]">
                   <div className="w-16 h-16 bg-slate-900/80 rounded-full flex items-center justify-center mx-auto mb-4 border border-white/5">
@@ -271,95 +272,95 @@ export default function Optimiser() {
               )}
 
               {result && !loading && (
-                <div className="space-y-4">
-                  {/* Stats */}
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 bg-slate-900/80 p-4 rounded-xl border border-white/5">
-                    <div>
-                      <p className="text-xs text-slate-400 uppercase font-semibold mb-1">Custo Total</p>
-                      <h3 className="text-white font-bold text-xl">C$ {(result.total_cost ?? 0).toFixed(2)}</h3>
-                    </div>
-                    <div>
-                      <p className="text-xs text-slate-400 uppercase font-semibold mb-1">Pontos (Proj.)</p>
-                      <p className="text-emerald-400 font-bold text-xl">{(result.total_expected_points ?? 0).toFixed(2)}</p>
-                    </div>
-                    {result.roi_cartoletas != null && (
-                      <div>
-                        <p className="text-xs text-slate-400 uppercase font-semibold mb-1">ROI (Proj.)</p>
-                        <p className="text-amber-400 font-bold text-xl">C$ {(result.roi_cartoletas ?? 0).toFixed(2)}</p>
-                      </div>
-                    )}
-                    {result.score_protecao != null && (
-                      <div>
-                        <p className="text-xs text-slate-400 uppercase font-semibold mb-1">Proteção (Reserva)</p>
-                        <p className="text-indigo-400 font-bold text-xl">
-                          {(result.score_protecao ?? 0).toFixed(1)}
-                          <span className="text-sm font-normal text-slate-500"> / 10</span>
-                        </p>
-                      </div>
-                    )}
-                    {user && (
-                      <div className="col-span-2 md:col-span-4 mt-2 pt-4 border-t border-white/5 flex justify-end">
-                        <button
-                          onClick={handleSave}
-                          disabled={saving}
-                          className="bg-indigo-600 hover:bg-indigo-500 text-white px-6 py-2 rounded-lg text-sm font-medium flex gap-2 items-center transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          <Save className="w-4 h-4" />
-                          {saving ? 'Salvando...' : 'Salvar no Histórico'}
-                        </button>
-                      </div>
-                    )}
-                  </div>
+                <div className="flex-1 flex flex-col justify-between py-4 sm:py-8 gap-4 px-2">
+                  {/* Rows for players (Attack, Mid, Def, GK) */}
+                  {[ 
+                    (result.lineup ?? []).filter((p: any) => p.pos === 5), // ATA
+                    (result.lineup ?? []).filter((p: any) => p.pos === 4), // MEI
+                    (result.lineup ?? []).filter((p: any) => p.pos === 2 || p.pos === 3), // ZAG + LAT
+                    (result.lineup ?? []).filter((p: any) => p.pos === 1)  // GOL
+                  ].map((row: any[], rowIdx) => (
+                    <div key={rowIdx} className="flex justify-around items-center w-full">
+                      {row.map((p: any, i: number) => {
+                        const isCaptain = result.capitao_id === p.id;
+                        const photoUrl = p.foto ? p.foto.replace('FORMATO', '140x140') : null;
+                        
+                        return (
+                          <div key={i} className="flex flex-col items-center group relative cursor-default">
+                            {/* Avatar / Marker */}
+                            <div className={`w-12 h-12 sm:w-14 sm:h-14 rounded-full border-2 bg-slate-800 flex items-center justify-center overflow-hidden
+                              ${isCaptain ? 'border-amber-400 shadow-[0_0_15px_rgba(251,191,36,0.4)]' : 'border-emerald-500'}
+                            `}>
+                              {photoUrl ? (
+                                <img src={photoUrl} alt={p.nome} className="w-full h-full object-cover" />
+                              ) : (
+                                <User className={`w-6 h-6 ${isCaptain ? 'text-amber-400' : 'text-emerald-400'}`} />
+                              )}
+                              
+                              {/* C captain badge */}
+                              {isCaptain && (
+                                <div className="absolute -bottom-1 -right-1 bg-amber-500 text-slate-900 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold border border-slate-900 z-10">
+                                  C
+                                </div>
+                              )}
+                            </div>
+                            
+                            {/* Name and pts */}
+                            <div className="mt-1 flex flex-col items-center bg-slate-900/80 backdrop-blur-sm px-2 py-0.5 rounded border border-white/10">
+                              <span className="text-[10px] sm:text-xs font-medium text-white truncate max-w-[80px]">
+                                {p.nome?.split(' ')[0]} 
+                              </span>
+                              <span className="text-[9px] font-mono text-emerald-400">
+                                {(p.pontos_esperados ?? 0).toFixed(1)}p
+                              </span>
+                            </div>
 
-                  <div className="h-px w-full bg-white/5 my-4" />
-
-                  {/* Titulares */}
-                  <div>
-                    <h4 className="text-sm font-semibold uppercase tracking-wider text-slate-500 mb-3">Titulares</h4>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      {(result.lineup ?? []).map((p: any, i: number) => (
-                        <div key={i} className="bg-slate-900/40 p-3 rounded-lg border border-white/5 flex flex-col gap-1">
-                          <div className="flex justify-between">
-                            <span className="text-white font-medium text-sm flex items-center gap-2">
-                              <User className="w-3 h-3 text-emerald-500" /> {p.nome ?? '—'}
-                            </span>
-                            <span className="text-xs px-2 py-0.5 rounded-full bg-slate-800 text-slate-300">{p.posicao ?? '—'}</span>
+                            {/* Hover tooltip for more info */}
+                            <div className="absolute bottom-full mb-2 opacity-0 group-hover:opacity-100 transition-opacity bg-slate-950 border border-slate-700 p-2 rounded shadow-xl z-20 w-36 pointer-events-none">
+                              <p className="text-xs text-white font-bold mb-1 truncate">{p.nome}</p>
+                              <div className="flex justify-between text-[10px] text-slate-400">
+                                <span>Preço:</span>
+                                <span className="font-mono text-amber-400">C$ {(p.preco ?? 0).toFixed(1)}</span>
+                              </div>
+                              <div className="flex justify-between text-[10px] text-slate-400">
+                                <span>Pts Proj:</span>
+                                <span className="font-mono text-emerald-400">{(p.pontos_esperados ?? 0).toFixed(2)}</span>
+                              </div>
+                            </div>
                           </div>
-                          <div className="flex justify-between items-center mt-1">
-                            <span className="text-xs text-slate-400">{p.clube ?? '—'}</span>
-                            <span className="text-xs font-mono text-emerald-400">
-                              C$ {(p.preco ?? 0).toFixed(1)} | {(p.pontos_esperados ?? 0).toFixed(1)} pts
-                            </span>
+                        );
+                      })}
+                    </div>
+                  ))}
+
+                  {/* Coach */}
+                  {(()=>{
+                    const tec = (result.lineup ?? []).find((p: any) => p.pos === 6);
+                    if (!tec) return null;
+                    const photoUrl = tec.foto ? tec.foto.replace('FORMATO', '140x140') : null;
+
+                    return (
+                      <div className="absolute bottom-4 right-4 flex flex-col items-center group z-10">
+                        <div className="w-10 h-10 rounded-full border border-slate-500 bg-slate-800 flex items-center justify-center overflow-hidden">
+                          {photoUrl ? (
+                            <img src={photoUrl} alt={tec.nome} className="w-full h-full object-cover" />
+                          ) : (
+                            <User className="w-5 h-5 text-slate-400" />
+                          )}
+                        </div>
+                        <div className="mt-1 bg-slate-900/80 px-1.5 py-0.5 rounded border border-white/10">
+                          <span className="text-[9px] font-medium text-slate-300 block text-center truncate max-w-[60px]">TEC</span>
+                        </div>
+                        <div className="absolute bottom-full mb-2 opacity-0 group-hover:opacity-100 transition-opacity bg-slate-950 border border-slate-700 p-2 rounded shadow-xl z-20 w-32 pointer-events-none right-0">
+                          <p className="text-xs text-white font-bold mb-1 truncate">{tec.nome}</p>
+                          <div className="flex justify-between text-[10px] text-slate-400">
+                            <span>Preço:</span>
+                            <span className="font-mono text-amber-400">C$ {(tec.preco ?? 0).toFixed(1)}</span>
                           </div>
                         </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Reservas */}
-                  <div className="mt-6">
-                    <h4 className="text-sm font-semibold uppercase tracking-wider text-slate-500 mb-3">
-                      Banco de Reservas
-                    </h4>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      {(result.reserves ?? []).map((p: any, i: number) => (
-                        <div key={i} className="bg-slate-900/40 p-3 rounded-lg border border-white/5 flex flex-col gap-1 opacity-80">
-                          <div className="flex justify-between">
-                            <span className="text-white font-medium text-sm flex items-center gap-2">
-                              <User className="w-3 h-3 text-amber-500" /> {p.nome ?? '—'}
-                            </span>
-                            <span className="text-xs px-2 py-0.5 rounded-full bg-slate-800 text-slate-300">{p.posicao ?? '—'}</span>
-                          </div>
-                          <div className="flex justify-between items-center mt-1">
-                            <span className="text-xs text-slate-400">{p.clube ?? '—'}</span>
-                            <span className="text-xs font-mono text-amber-400">
-                              C$ {(p.preco ?? 0).toFixed(1)} | {(p.pontos_esperados ?? 0).toFixed(1)} pts
-                            </span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
+                      </div>
+                    );
+                  })()}
                 </div>
               )}
             </div>
@@ -374,7 +375,34 @@ export default function Optimiser() {
               Justificativa Matemática
             </h3>
 
-            <div className="space-y-3">
+            <div className="space-y-4">
+              {/* Stats Block - moved here from the field */}
+              {result && (
+                <div className="grid grid-cols-2 gap-3 bg-slate-900/80 p-4 rounded-xl border border-emerald-500/20 mb-4">
+                  <div>
+                    <p className="text-[10px] text-slate-400 uppercase font-semibold mb-1">Custo Total</p>
+                    <h3 className="text-white font-bold text-lg">C$ {(result.total_cost ?? 0).toFixed(1)}</h3>
+                  </div>
+                  <div>
+                    <p className="text-[10px] text-slate-400 uppercase font-semibold mb-1">Pontos (Proj.)</p>
+                    <p className="text-emerald-400 font-bold text-lg">{(result.total_expected_points ?? 0).toFixed(1)}</p>
+                  </div>
+                  {user && (
+                    <div className="col-span-2 mt-2 pt-3 border-t border-white/5">
+                      <button
+                        onClick={handleSave}
+                        disabled={saving}
+                        className="w-full bg-indigo-600/20 hover:bg-indigo-600/40 text-indigo-300 border border-indigo-500/30 py-2 rounded-lg text-sm font-medium flex gap-2 items-center justify-center transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        <Save className="w-4 h-4" />
+                        {saving ? 'Salvando...' : 'Salvar no Histórico'}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Justifications */}
               {!result ? (
                 <div className="border border-white/5 bg-slate-900/50 p-4 rounded-lg">
                   <p className="text-xs text-slate-500 mb-1">O cálculo será exibido aqui assim que a escalação for analisada.</p>
@@ -382,23 +410,50 @@ export default function Optimiser() {
                   <div className="h-2 bg-slate-800 rounded-full w-1/2" />
                 </div>
               ) : (
-                <div className="space-y-3 overflow-y-auto max-h-[600px] pr-2">
+                <div className="space-y-3 overflow-y-auto max-h-[400px] pr-2">
+                  <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                    Destaques Matemáticos
+                  </h4>
                   {[...(result.lineup ?? [])]
                     .sort((a: any, b: any) => (b.pontos_esperados ?? 0) - (a.pontos_esperados ?? 0))
                     .slice(0, 5)
                     .map((p: any, i: number) => (
-                      <div key={i} className="border border-indigo-500/20 bg-slate-900/80 p-4 rounded-lg">
+                      <div key={i} className="border border-indigo-500/20 bg-slate-900/80 p-3 rounded-lg">
                         <div className="flex items-center gap-2 mb-2">
-                          <div className="w-6 h-6 rounded bg-indigo-500/20 flex items-center justify-center text-indigo-400 font-bold text-xs">
-                            {i + 1}
-                          </div>
                           <span className="text-sm font-medium text-white">{p.nome ?? '—'}</span>
+                          <span className="ml-auto text-xs font-mono text-emerald-400">{(p.pontos_esperados ?? 0).toFixed(1)}p</span>
                         </div>
                         <p className="text-xs text-slate-400 leading-relaxed italic border-l-2 border-indigo-500/30 pl-3">
-                          "{p.justificativa ?? 'Alto retorno esperado para o orçamento.'}"
+                          {modo === 'mitagem' 
+                            ? (p.pos === 1 || p.pos === 2 || p.pos === 3 
+                                ? "Muralha Estatística. Índice alto de desarmes com multiplicador positivo de SG para a rodada." 
+                                : "Agressividade latente. xG + xA alto combinado com adversário vulnerável.")
+                            : "Alto potencial de lucro. GAP entre média e pontos necessários favorável ao orçamento."}
                         </p>
                       </div>
                     ))}
+                    
+                    {/* Reservas na sidebar tbm */}
+                    <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-500 mt-6 mb-2">
+                      Banco de Reservas
+                    </h4>
+                    <div className="grid grid-cols-1 gap-2">
+                      {(result.reserves ?? []).map((p: any, i: number) => (
+                        <div key={`res-${i}`} className="bg-slate-900/40 p-2 rounded-lg border border-white/5 flex gap-3 items-center">
+                           <div className="w-8 h-8 rounded-full border border-slate-600 bg-slate-800 flex items-center justify-center overflow-hidden flex-shrink-0">
+                            {p.foto ? (
+                              <img src={p.foto.replace('FORMATO', '140x140')} alt={p.nome} className="w-full h-full object-cover" />
+                            ) : (
+                              <User className="w-4 h-4 text-slate-400" />
+                            )}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs text-white font-medium truncate">{p.nome}</p>
+                            <p className="text-[10px] text-slate-400 font-mono">C$ {(p.preco ?? 0).toFixed(1)}</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                 </div>
               )}
             </div>
