@@ -1,0 +1,9 @@
+fastapi==0.115.6
+pulp==2.9.0
+requests==2.32.3
+redis==5.2.1
+firebase-admin==6.6.0
+python-dotenv==1.0.1
+uvicorn==0.34.0
+gunicorn==23.0.0
+a2wsgi==1.10.6
