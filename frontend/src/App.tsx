@@ -5,6 +5,7 @@ import ProtectedRoute from './components/ProtectedRoute';
 import Login from './pages/Login';
 import Optimiser from './pages/Optimiser';
 import Dashboard from './pages/Dashboard';
+import Profile from './pages/Profile';
 
 export default function App() {
   return (
@@ -17,6 +18,7 @@ export default function App() {
             <Route path="/" element={<Navigate to="/optimiser" replace />} />
             <Route path="/optimiser" element={<Optimiser />} />
             <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/profile" element={<Profile />} />
           </Route>
         </Routes>
       </BrowserRouter>
