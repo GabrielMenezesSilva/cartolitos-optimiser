@@ -62,8 +62,9 @@ async def optimize_real(budget: float = 140.0, formation: str = "4-3-3", ousadia
         result = engine.optimize_team(players_normalized)
         
         # 4. RF02 : Simulador de Impacto / ROI Extras
-        result["roi_cartoletas"] = result["pontos_esperados"] * 0.45 if modo == "valorizacao" else 0.0
-        result["score_protecao"] = sum(p['pontos_esperados'] for p in result["reservas"]) / max(1, len(result["reservas"]))
+        reservas = [p for p in result["results"]["lineup"] if not p["is_titular"]]
+        result["meta"]["roi_cartoletas"] = result["meta"]["total_expected_points"] * 0.45 if modo == "valorizacao" else 0.0
+        result["meta"]["score_protecao"] = sum(p['pontos_esperados'] for p in reservas) / max(1, len(reservas))
 
         return result
     except Exception as e:

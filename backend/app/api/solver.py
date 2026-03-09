@@ -14,6 +14,7 @@ class PlayerIn(BaseModel):
     clube_id: int
 
 class OptimizeRequest(BaseModel):
+    objective: str = Field("mitagem", description="Objetivo: mitagem ou valorizacao")
     budget: float = Field(100.0, description="Orçamento disponível em cartoletas")
     formation: str = Field("4-3-3", description="Formação tática, ex: 4-4-2, 3-5-2")
     players: List[PlayerIn]
@@ -25,7 +26,7 @@ def optimize_lineup(request: OptimizeRequest):
     e retorna a escalação ideal maximizando os pontos dentro do orçamento.
     """
     try:
-        engine = MathEngine(budget=request.budget, formation=request.formation)
+        engine = MathEngine(objective=request.objective, budget=request.budget, formation=request.formation)
         
         # Converter para lista de dicionários para o solver
         players_dict = [p.model_dump() for p in request.players]

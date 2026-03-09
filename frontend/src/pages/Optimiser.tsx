@@ -49,12 +49,14 @@ export default function Optimiser() {
     try {
       // round_id derivado da data atual (semana do ano) como fallback real
       const weekNumber = Math.ceil((new Date().getDate() + new Date().getDay()) / 7);
+      const lineup = result.results?.lineup?.filter((p: any) => p.is_titular) || [];
+      const reserves = result.results?.lineup?.filter((p: any) => !p.is_titular) || [];
       await saveLineup(
         token,
         weekNumber,
-        result.total_expected_points ?? 0,
-        result.total_cost ?? 0,
-        { lineup: result.lineup, reserves: result.reserves },
+        result.meta?.total_expected_points ?? 0,
+        result.meta?.total_cost ?? 0,
+        { lineup, reserves },
         modo
       );
       addToast('success', 'Escalação salva no histórico com sucesso!');
@@ -271,11 +273,11 @@ export default function Optimiser() {
                 <div className="grid grid-cols-2 gap-3 bg-slate-900/80 p-4 rounded-xl border border-emerald-500/20 mb-4">
                   <div>
                     <p className="text-[10px] text-slate-400 uppercase font-semibold mb-1">Custo Total</p>
-                    <h3 className="text-white font-bold text-lg">C$ {(result.total_cost ?? 0).toFixed(1)}</h3>
+                    <h3 className="text-white font-bold text-lg">C$ {(result.meta?.total_cost ?? 0).toFixed(1)}</h3>
                   </div>
                   <div>
                     <p className="text-[10px] text-slate-400 uppercase font-semibold mb-1">Pontos (Proj.)</p>
-                    <p className="text-emerald-400 font-bold text-lg">{(result.total_expected_points ?? 0).toFixed(1)}</p>
+                    <p className="text-emerald-400 font-bold text-lg">{(result.meta?.total_expected_points ?? 0).toFixed(1)}</p>
                   </div>
                   {user && (
                     <div className="col-span-2 mt-2 pt-3 border-t border-white/5">
@@ -304,7 +306,7 @@ export default function Optimiser() {
                   <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
                     Destaques Matemáticos
                   </h4>
-                  {[...(result.lineup ?? [])]
+                  {[...(result.results?.lineup?.filter((p: any) => p.is_titular) ?? [])]
                     .sort((a: any, b: any) => (b.pontos_esperados ?? 0) - (a.pontos_esperados ?? 0))
                     .slice(0, 5)
                     .map((p: any, i: number) => (
@@ -314,11 +316,7 @@ export default function Optimiser() {
                           <span className="ml-auto text-xs font-mono text-emerald-400">{(p.pontos_esperados ?? 0).toFixed(1)}p</span>
                         </div>
                         <p className="text-xs text-slate-400 leading-relaxed italic border-l-2 border-indigo-500/30 pl-3">
-                          {modo === 'mitagem'
-                            ? (p.pos === 1 || p.pos === 2 || p.pos === 3
-                              ? "Muralha Estatística. Índice alto de desarmes com multiplicador positivo de SG para a rodada."
-                              : "Agressividade latente. xG + xA alto combinado com adversário vulnerável.")
-                            : "Alto potencial de lucro. GAP entre média e pontos necessários favorável ao orçamento."}
+                          {p.reason ?? "Agressividade latente. xG + xA alto combinado com adversário vulnerável."}
                         </p>
                       </div>
                     ))}
@@ -328,7 +326,7 @@ export default function Optimiser() {
                     Banco de Reservas
                   </h4>
                   <div className="grid grid-cols-1 gap-2">
-                    {(result.reserves ?? []).map((p: any, i: number) => (
+                    {(result.results?.lineup?.filter((p: any) => !p.is_titular) ?? []).map((p: any, i: number) => (
                       <div key={`res-${i}`} className="bg-slate-900/40 p-2 rounded-lg border border-white/5 flex gap-3 items-center">
                         <div className="w-8 h-8 rounded-full border border-slate-600 bg-slate-800 flex items-center justify-center overflow-hidden flex-shrink-0">
                           {p.foto ? (

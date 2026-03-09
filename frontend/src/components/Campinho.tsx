@@ -42,14 +42,16 @@ export function Campinho({ loading, result }: CampinhoProps) {
         );
     }
 
+    const titulares = result.results?.lineup?.filter((p: any) => p.is_titular) ?? [];
+
     const rows = [
-        (result.lineup ?? []).filter((p: any) => p.pos === 5), // ATA
-        (result.lineup ?? []).filter((p: any) => p.pos === 4), // MEI
-        (result.lineup ?? []).filter((p: any) => p.pos === 2 || p.pos === 3), // ZAG + LAT
-        (result.lineup ?? []).filter((p: any) => p.pos === 1)  // GOL
+        titulares.filter((p: any) => p.pos_id === 5), // ATA
+        titulares.filter((p: any) => p.pos_id === 4), // MEI
+        titulares.filter((p: any) => p.pos_id === 2 || p.pos_id === 3), // ZAG + LAT
+        titulares.filter((p: any) => p.pos_id === 1)  // GOL
     ];
 
-    const tec = (result.lineup ?? []).find((p: any) => p.pos === 6);
+    const tec = titulares.find((p: any) => p.pos_id === 6);
     let delayCounter = 0;
 
     return (
@@ -62,7 +64,7 @@ export function Campinho({ loading, result }: CampinhoProps) {
                             <PlayerCard
                                 key={p.id}
                                 player={p}
-                                isCaptain={result.capitao_id === p.id}
+                                isCaptain={p.is_capitao}
                                 delay={delayCounter}
                             />
                         );

@@ -1,0 +1,13 @@
+Indicador ou Recurso,Endpoint ou Categoria,Descrição Técnica,Impacto na Pontuação,Tipo de Acesso,Fonte
+Status do Mercado,/mercado/status,"Indica se o mercado está aberto, fechado ou em manutenção, além do prazo de fechamento.",Nenhum (Informativo),Público,1
+Atletas do Mercado,/atletas/mercado,"Lista completa de jogadores, incluindo preços, variações, médias e scouts acumulados.",Base para cálculo de performance e valorização,Público,1
+Partidas da Rodada,/partidas,"Calendário de confrontos, horários, locais (estádios) e resultados parciais/finais.",Define bônus de Saldo de Gol (SG) e mando de campo,Público,1
+Mapeamento de Clubes,/clubes,"Dicionário de IDs para nomes completos, abreviações e URLs de escudos.",Nenhum (Metadados),Público,1
+Pontuação Parcial,/atletas/pontuados,Atualizações em tempo real das pontuações dos jogadores durante os jogos.,Pontuação dinâmica durante a rodada,Público,1
+Gestão de Time,/auth/time,"Informações da conta do usuário, saldo de cartoletas e visualização da escalação atual.",Monitoramento do patrimônio disponível,Autenticado (X-GLB-Token),1
+Salvar Escalação,/time/salvar,Envio da lista de IDs dos jogadores escolhidos para a rodada vigente via método POST.,Confirmação da pontuação final da rodada,Autenticado (X-GLB-Token),1
+Scout de Gol (G),Ataque,Gol marcado pelo atleta.,+8.0 pontos,Público (via API),"1, 2"
+Saldo de Gol (SG),Defesa,"Não sofrer gols na partida (exclusivo para Goleiro, Laterais e Zagueiros).",+5.0 pontos,Público (via API),"1, 2"
+Desarme (DS),Defesa,Ação defensiva de roubada de bola (antigo RB).,+1.2 pontos,Público (via API),"1, 2"
+Mínimo para Valorizar (MV),Mercado,Cálculo baseado em Preço Atual (0.45) e Última Pontuação (0.1) para identificar lucro.,Geração de patrimônio (Cartoletas),Calculado (Interno),"2, 3"
+Histórico caRtola (2014-2026),Data Science / Kedro,Repositório de dados brutos (data/01_raw) e processados para modelagem preditiva.,Otimização estatística de longo prazo,Público (GitHub),"1, 3, 4"

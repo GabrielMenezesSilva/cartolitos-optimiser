@@ -82,6 +82,14 @@ export function PlayerCard({ player, isCaptain = false, delay = 0, className, is
                             </span>
                         </div>
                     )}
+                    {player.reason && (
+                        <div className="flex flex-col text-[11px] pt-1 border-t border-white/5">
+                            <span className="text-slate-400">Justificativa</span>
+                            <span className="text-slate-300 italic text-[10px] leading-tight">
+                                {player.reason}
+                            </span>
+                        </div>
+                    )}
                 </div>
                 <div className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-3 h-3 bg-slate-950/95 border-b border-r border-white/10 rotate-45 transform" />
             </div>
