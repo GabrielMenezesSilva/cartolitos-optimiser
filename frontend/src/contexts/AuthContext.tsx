@@ -1,7 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import type { User } from 'firebase/auth';
-import { onIdTokenChanged } from 'firebase/auth';
-import { auth } from '../lib/firebase';
+import { User } from '@supabase/supabase-js';
+import { supabase } from '../lib/supabase';
 
 interface AuthContextType {
     user: User | null;
@@ -19,18 +18,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        const unsubscribe = onIdTokenChanged(auth, async (currentUser) => {
-            setUser(currentUser);
-            if (currentUser) {
-                const idToken = await currentUser.getIdToken();
-                setToken(idToken);
-            } else {
-                setToken(null);
-            }
+        // Initial session fetch
+        supabase.auth.getSession().then(({ data: { session } }) => {
+            setUser(session?.user ?? null);
+            setToken(session?.access_token ?? null);
             setLoading(false);
         });
 
-        return unsubscribe;
+        // Listen for changes
+        const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+            setUser(session?.user ?? null);
+            setToken(session?.access_token ?? null);
+            setLoading(false); // Stop loading once first state resolves
+        });
+
+        return () => {
+            subscription.unsubscribe();
+        };
     }, []);
 
     return (

@@ -1,6 +1,6 @@
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { loginWithGoogle } from '../lib/firebase';
+import { loginWithGoogle } from '../lib/supabase';
 import { Zap, TrendingUp, ShieldCheck, BarChart2 } from 'lucide-react';
 
 const features = [
@@ -138,7 +138,7 @@ export default function Login() {
                     <p className="text-center text-xs text-slate-600 leading-relaxed">
                         Apenas usuários convidados têm acesso à Engine ILP. <br />
                         Seus dados são gerenciados pelo{' '}
-                        <span className="text-slate-400">Firebase Auth</span> e nunca compartilhados.
+                        <span className="text-slate-400">Supabase Auth</span> e nunca compartilhados.
                     </p>
 
                     {/* Decorative score preview */}

@@ -1,48 +1,46 @@
-# Cartolitos Optimiser - Technical Plan (Phase 1)
+# 🏆 Planejamento Estratégico: Cartolitos Optimiser (Full-Stack Platform)
 
-## 1. Visão Geral da Arquitetura (The Divine Stack)
-A solução será baseada em uma arquitetura Serverless orientada a microsserviços, garantindo escalabilidade nos picos de fechamento do mercado.
-*   **Frontend**: React (Vite) + TailwindCSS + Lucide Icons para renderizar o "Soccer Field" e os cards de justificativa ("Por que ele?").
-*   **Backend / Solver**: Cloud Functions em Python 3.12+ (FastAPI) e Firebase (Firestore/Realtime Database). Cache utilizando Redis.
-*   **Math Engine**: Biblioteca `PuLP` configurada para resolver o "Problema da Mochila Multi-Objetivo". 
+## 1. Lógica Pro (Inteligência de Dados e Solver)
+**Objetivo:** Extrair e aplicar o conhecimento estatístico validado do repositório `henriquepgomide/caRtola`.
 
-## 2. Abordagem de Integração (Globo API Pipeline)
-O fluxo de ingestão e autenticação foi projetado para contornar bloqueios (401/403) usando o protocolo **OIDC/JWT** estruturado para 2026.
+*   **Ingestão e Sincronização Automática:** 
+    *   Pipeline contínuo buscando os dados da API Oficial do Cartola FC (mercado, pontuações parciais, status dos atletas) para a temporada atual (2025/2026), armazenando cache inteligente no Supabase.
+*   **Modelos Preditivos (caRtola Docs):**
+    *   **Regressão de Pontos (Mitar):** Utilização de médias móveis de pontuação, mando de campo e força defensiva do adversário para projetar Expected Value (EV) de cada jogador (Expectativa de Pontos).
+    *   **Lógica de Valorização (Cartoletas):** Cálculo do diferencial entre média necessária e preço atual para projetar o ganho de cartoletas (Sistema de Valorização baseado nos notebooks validados).
+*   **Motor de Otimização (PuLP):**
+    *   Configuração do *Knapsack Problem* multi-restrição: 
+        *   *Restrição 1:* Orçamento (Patrimônio definido via Slider).
+        *   *Restrição 2:* Esquema Tático (ex: exatamente 1 GOL, 2 ZAG, 2 LAT, 3 MEI, 3 ATA, 1 TEC).
+        *   *Restrição 3:* Status do jogador (Apenas "Prováveis").
+    *   **Função Objetivo Dinâmica:** Alternagem entre maximizar Expectativa de Pontos (`Mitar`) ou maximizar Projeção Euclidiana de Valorização (`Valorizar`).
 
-### Autenticação Segura (OIDC/JWT)
-1.  **Captura de Identidade**: O usuário deverá inserir credenciais seguras. A requisição inicial `POST` para `https://login.globo.com/api/authentication` conterá as credenciais e o `ServiceId: 438`.
-2.  **Headers de Elite**: Todas as requisições autenticadas da aplicação embutirão:
-    *   `User-Agent` customizado (rotacionável se necessário ou mimetizando browsers reais).
-    *   `Content-Type: application/json`
-    *   `X-GLB-Token` (obtido via cookie / jwt payload: o `glbId`).
-3.  **Proxy / Webview (Fallback)**: Uso de injeção em app/WebView em cenários de persistência de cookie para capturar e renovar tokens de forma invisível.
+## 2. Frontend Visual (O "Campinho" Profissional)
+**Objetivo:** Substituir tabelas de texto por um Dashboard altamente interativo, focado em Experiência do Usuário (UX).
 
-### Escalação Automatizada (Auth API)
-Uma vez com o `X-GLB-Token` válido:
-*   A requisição de escalação faz o `POST` final para `/auth/time/salvar`.
-*   O JSON Body enviado representará perfeitamente o esquema tático, banco de luxo e a identificação precisa do "Capitão" do time (peso 2x), todos mapeados pelas recomendações do Math Engine.
+*   **O Componente "Campinho" (Visual Pitch):**
+    *   Layout em proporção real de um campo de futebol, mapeando a distribuição tática a partir da escolha do usuário (ex: 4-3-3 aloca zagueiros e laterais na defesa, triângulo no meio, tridente no ataque).
+*   **Cards de Jogadores (Pitch Overlay):**
+    *   Carregamento rápido da foto oficial da API da Globo.
+    *   Mini-badge com o Custo (C$), Pontos Esperados (PE) e ícone do time.
+    *   "Badge de Capitão" dinâmico (com a letra "C" dourada) atrelado ao jogador ofensivo com maior Variância/EV calculados pelo PuLP.
+*   **Painel de Controles e Side-bar:**
+    *   *Slider Fluido* de Orçamento/Cartoletas.
+    *   *Switch Tático:* Selector rápido (4-3-3, 3-4-3, 3-5-2, 4-4-2).
+    *   *Objetivo Toggle:* Botão estilizado com ícones (Raio ⚡ para "Mitar", Saco de Dinheiro 💰 para "Valorizar").
+*   **Justificativa Interativa (Drawer/Modal):**
+    *   Ao clicar no card do atleta no Campinho, uma layer lateral exibe o porquê de o Solver tê-lo escolhido (ex: "Joga em casa contra a 3ª pior defesa", "Precisa de apenas 1.5 pontos para valorizar", etc).
 
-## 3. O Motor Matemático (Contexto & Risco via PuLP)
-Modelado sobre Python (`PuLP`), a função de maximização buscará otimizar:
-$$ Z = \sum (\\omega_i \cdot E[P_i] \cdot x_i) $$
+## 3. Arquitetura do Sistema
+**Objetivo:** Arquitetura limpa, escalável e conectada às nossas ferramentas integradas.
 
-### Variáveis e Parâmetros
-*   **Variáveis Binárias ($x_i$)**: $1$ se o atleta $i$ é escalado, $0$ caso contrário.
-*   **Multiplicadores Contextuais ($\\omega_i$)**: Baseado em probabilidades de SG (Odds implícitas > 60%), FDR (Dificuldade do adversário) e stats de xG/xA (Expected Goals/Assists) injetados via banco histórico próprio e Sportmonks API.
-
-### Constraints (Restrições)
-1.  **Formação Tática**: O número de $x_i$ por posição (ZAG, LAT, MEI, ATA, TEC) deve espelhar a formação escolhida (ex: 4-3-3).
-2.  **Orçamento Máximo**: $\sum (Price_i \cdot x_i) \leq C$, onde $C$ são as cartoletas disponíveis.
-3.  **Slider de Ousadia (1-10)**: Um parâmetro $\alpha$ que distribui os pesos entre o "piso de pontuação segura" e o "teto máximo (risco de negativação)".
-
-### Lógica da Reserva de Luxo
-Para o banco de reservas $R$, o sistema avaliará:
-$$ \max (E[Teto_R]) \text{ sujeito a } Price_R \leq \min_{i \in Titulares, Pos_i=Pos_R}(Price_i) $$
-Assegurando o substituto matemático de maior impacto caso um titular não inicie a partida (detecção via *The Panic Button* monitorando `status` do atleta no último minuto).
-
-## 4. Backtesting & Validação
-*   O sistema treinará um branch validando o modelo preditivo construído via ML usando base histórica aberta (`caRtola` com dados desde 2014) contra as "médias óbvias". 
-*   **Aprovações QA**: Antes da recomendação, o motor validará cenários onde restam dúvidas sobre o goleiro / SG provável.
-
----
-> **Aguardando aprovação ("Aprovado") para transição ao ambiente de execução (`@loki-mode -> Phase 2`).**
+*   **Banco de Dados (Point of Truth):**
+    *   **Supabase PostgreSQL** (`https://vnufdzfedzncdiyxujgp.supabase.co`).
+    *   Tabelas principais: `players_cache`, `teams_cache`, `rounds_history`. Gerenciamento via `Supabase MCP`.
+*   **Motor Backend (Python / FastAPI):**
+    *   Módulos: `analytics.py` (ETL e modelos de regressão), `market.py` (scraping/ingestão) e `solver.py` (PuLP API endpoint). 
+    *   Serviço assíncrono para lidar rapidamente com a matriz de 500+ jogadores.
+*   **Camada Frontend (React / Tailwind):**
+    *   Consome a API Python e expõe no Dashboard. Interface rica e animações limpas para as trocas de jogador promovidas pelo algoritmo.
+*   **Quality Gate:**
+    *   Passagem de código e arquitetura pelo `SonarQube MCP` antes de commits pro GitHub, enviando relatórios formais via `Notion MCP`.

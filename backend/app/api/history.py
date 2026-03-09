@@ -1,8 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from typing import List, Dict, Any
-from app.core.firebase import get_current_user, get_firebase_app
-from firebase_admin import firestore
+from app.core.supabase import get_current_user, get_supabase_client
 
 router = APIRouter()
 
@@ -13,39 +12,35 @@ class LineupSaveRequest(BaseModel):
     teams_json: List[Dict[str, Any]]
 
 @router.post("/save", status_code=status.HTTP_201_CREATED)
-async def save_lineup(request: LineupSaveRequest, current_user: dict = Depends(get_current_user)):
+async def save_lineup(request: LineupSaveRequest, current_user = Depends(get_current_user)):
     try:
-        db = firestore.client()
-        user_id = current_user.get("uid")
+        supabase = get_supabase_client()
+        user_id = current_user.id
         
-        # Cria ou atualiza o documento da rodada na collection lineup_history
-        doc_ref = db.collection("lineup_history").document(f"{user_id}_{request.round_uuid}")
-        doc_ref.set({
+        data = {
             "uid": user_id,
             "round_uuid": request.round_uuid,
             "expected_points_total": request.expected_points_total,
             "cost": request.cost,
-            "teams_json": request.teams_json,
-            "timestamp": firestore.SERVER_TIMESTAMP
-        })
+            "teams_json": request.teams_json
+        }
+        
+        # Upsert into lineup_history tables
+        # requires table to be configured in Supabase with these columns
+        response = supabase.table("lineup_history").upsert(data).execute()
         
         return {"status": "success", "message": "Escalação salva com sucesso para a Prova Real!"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/audit", response_model=List[Dict[str, Any]])
-async def get_audit_history(current_user: dict = Depends(get_current_user)):
+async def get_audit_history(current_user = Depends(get_current_user)):
     try:
-        db = firestore.client()
-        user_id = current_user.get("uid")
+        supabase = get_supabase_client()
+        user_id = current_user.id
         
         # Buscar histórico de line-ups
-        lineups_ref = db.collection("lineup_history").where("uid", "==", user_id).stream()
-        history = []
-        for doc in lineups_ref:
-            history.append(doc.to_dict())
-            
-        # Opcional: Cruza com `round_results` se existir (poderá ser um doc mesclado depois)
-        return history
+        response = supabase.table("lineup_history").select("*").eq("uid", user_id).execute()
+        return response.data
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException
-from app.services.cartola import cartola_service
+from app.services.market import cartola_service
 
 router = APIRouter()
 
@@ -29,7 +29,7 @@ async def get_partidas(rodada: Optional[int] = None):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-from app.services.data_processing import data_processor
+from app.services.analytics import data_processor
 from app.services.solver import MathEngine
 
 @router.get("/optimize-real")

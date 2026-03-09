@@ -136,14 +136,15 @@ class DataProcessor:
             
         return hybrid_projection * context_multiplier
 
-    def _calculate_expected_valuation(self, player: Dict[str, Any]) -> float:
+    def _calculate_expected_valuation(self, player: Dict[str, Any], expected_points: float) -> float:
         """
-        Calcula expectativa de valorização baseada na regra: 
-        Preço atual * 0.45 - Média 
+        Calcula expectativa de valorização baseada na regra estatística do Gomide:
+        Para valorizar (C > 0), a pontuação na rodada precisa ser > Preço Atual * 0.45.
+        O delta (Expectativa de Ganho) é proporcional à diferença entre a Expectativa de Pontos e esse piso.
         """
-        points_needed = player.get('preco_num', 0) * 0.45
-        diff = player.get('media_num', 0) - points_needed 
-        return diff
+        preco = player.get('preco_num', 0.0)
+        points_needed = preco * 0.45
+        return expected_points - points_needed
 
     def normalize_players(self, cartola_atletas: Dict[str, Any], ousadia: int = 5, objective: str = "mitagem", cartola_partidas: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
         """
@@ -157,10 +158,11 @@ class DataProcessor:
             clube = rp.get('clube_id')
             preco = rp.get('preco_num', 0.0)
             
-            if objective == "mitagem":
-                pts_esperados = self._calculate_expected_points(rp, ousadia, cartola_partidas)
-            else:
-                pts_esperados = self._calculate_expected_valuation(rp)
+            pts_esperados = self._calculate_expected_points(rp, ousadia, cartola_partidas)
+            pts_valorizacao = self._calculate_expected_valuation(rp, pts_esperados)
+            
+            # The solver score is what we'll maximize
+            solver_score = pts_esperados if objective == "mitagem" else pts_valorizacao
             
             p = {
                 "id": rp.get('atleta_id'),
@@ -168,6 +170,8 @@ class DataProcessor:
                 "pos": pos,
                 "preco": preco,
                 "pontos_esperados": pts_esperados,
+                "pontos_valorizacao": pts_valorizacao,
+                "solver_score": solver_score,
                 "clube_id": clube,
                 "status_id": rp.get('status_id'),
                 "foto": rp.get('foto')  # Important for frontend UI

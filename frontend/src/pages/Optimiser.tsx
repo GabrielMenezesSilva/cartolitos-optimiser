@@ -3,6 +3,7 @@ import { Cpu, ShieldAlert, Zap, TrendingUp, Settings2, Save, User, CheckCircle, 
 import { useNavigate } from 'react-router-dom';
 import { optimizeLineup, saveLineup } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
+import { Campinho } from '../components/Campinho';
 
 // Toast simples inline (sem lib externa)
 type Toast = { id: number; type: 'success' | 'error'; message: string };
@@ -133,13 +134,13 @@ export default function Optimiser() {
                 className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/5 hover:bg-white/10 transition-colors"
                 title="Minha Conta"
               >
-                {user.photoURL ? (
-                  <img src={user.photoURL} alt="avatar" className="w-6 h-6 rounded-full" />
+                {user.user_metadata?.avatar_url ? (
+                  <img src={user.user_metadata.avatar_url} alt="avatar" className="w-6 h-6 rounded-full" />
                 ) : (
                   <User className="w-4 h-4 text-slate-300" />
                 )}
                 <span className="hidden sm:block text-sm text-slate-300 max-w-[120px] truncate">
-                  {user.displayName}
+                  {user.user_metadata?.full_name || user.email}
                 </span>
               </button>
             )}
@@ -251,118 +252,7 @@ export default function Optimiser() {
             </div>
 
             <div className="relative z-10 w-full h-full p-4 overflow-y-auto flex flex-col">
-              {/* Field UI */}
-              {!result && !loading && (
-                <div className="h-full flex flex-col items-center justify-center text-center px-6 min-h-[400px]">
-                  <div className="w-16 h-16 bg-slate-900/80 rounded-full flex items-center justify-center mx-auto mb-4 border border-white/5">
-                    <Cpu className="w-8 h-8 text-emerald-500/50" />
-                  </div>
-                  <h3 className="text-lg font-medium text-white/70 mb-1">Motor Ocioso</h3>
-                  <p className="text-sm text-slate-400">Configure os parâmetros e clique em processar para gerar a escalação ótima.</p>
-                </div>
-              )}
-
-              {loading && (
-                <div className="h-full flex items-center justify-center min-h-[400px]">
-                  <div className="flex flex-col items-center gap-4">
-                    <div className="w-12 h-12 border-4 border-emerald-500/20 border-t-emerald-500 rounded-full animate-spin" />
-                    <span className="text-emerald-400 font-medium">Resolvendo O(N) com PuLP...</span>
-                  </div>
-                </div>
-              )}
-
-              {result && !loading && (
-                <div className="flex-1 flex flex-col justify-between py-4 sm:py-8 gap-4 px-2">
-                  {/* Rows for players (Attack, Mid, Def, GK) */}
-                  {[ 
-                    (result.lineup ?? []).filter((p: any) => p.pos === 5), // ATA
-                    (result.lineup ?? []).filter((p: any) => p.pos === 4), // MEI
-                    (result.lineup ?? []).filter((p: any) => p.pos === 2 || p.pos === 3), // ZAG + LAT
-                    (result.lineup ?? []).filter((p: any) => p.pos === 1)  // GOL
-                  ].map((row: any[], rowIdx) => (
-                    <div key={rowIdx} className="flex justify-around items-center w-full">
-                      {row.map((p: any, i: number) => {
-                        const isCaptain = result.capitao_id === p.id;
-                        const photoUrl = p.foto ? p.foto.replace('FORMATO', '140x140') : null;
-                        
-                        return (
-                          <div key={i} className="flex flex-col items-center group relative cursor-default">
-                            {/* Avatar / Marker */}
-                            <div className={`w-12 h-12 sm:w-14 sm:h-14 rounded-full border-2 bg-slate-800 flex items-center justify-center overflow-hidden
-                              ${isCaptain ? 'border-amber-400 shadow-[0_0_15px_rgba(251,191,36,0.4)]' : 'border-emerald-500'}
-                            `}>
-                              {photoUrl ? (
-                                <img src={photoUrl} alt={p.nome} className="w-full h-full object-cover" />
-                              ) : (
-                                <User className={`w-6 h-6 ${isCaptain ? 'text-amber-400' : 'text-emerald-400'}`} />
-                              )}
-                              
-                              {/* C captain badge */}
-                              {isCaptain && (
-                                <div className="absolute -bottom-1 -right-1 bg-amber-500 text-slate-900 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold border border-slate-900 z-10">
-                                  C
-                                </div>
-                              )}
-                            </div>
-                            
-                            {/* Name and pts */}
-                            <div className="mt-1 flex flex-col items-center bg-slate-900/80 backdrop-blur-sm px-2 py-0.5 rounded border border-white/10">
-                              <span className="text-[10px] sm:text-xs font-medium text-white truncate max-w-[80px]">
-                                {p.nome?.split(' ')[0]} 
-                              </span>
-                              <span className="text-[9px] font-mono text-emerald-400">
-                                {(p.pontos_esperados ?? 0).toFixed(1)}p
-                              </span>
-                            </div>
-
-                            {/* Hover tooltip for more info */}
-                            <div className="absolute bottom-full mb-2 opacity-0 group-hover:opacity-100 transition-opacity bg-slate-950 border border-slate-700 p-2 rounded shadow-xl z-20 w-36 pointer-events-none">
-                              <p className="text-xs text-white font-bold mb-1 truncate">{p.nome}</p>
-                              <div className="flex justify-between text-[10px] text-slate-400">
-                                <span>Preço:</span>
-                                <span className="font-mono text-amber-400">C$ {(p.preco ?? 0).toFixed(1)}</span>
-                              </div>
-                              <div className="flex justify-between text-[10px] text-slate-400">
-                                <span>Pts Proj:</span>
-                                <span className="font-mono text-emerald-400">{(p.pontos_esperados ?? 0).toFixed(2)}</span>
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  ))}
-
-                  {/* Coach */}
-                  {(()=>{
-                    const tec = (result.lineup ?? []).find((p: any) => p.pos === 6);
-                    if (!tec) return null;
-                    const photoUrl = tec.foto ? tec.foto.replace('FORMATO', '140x140') : null;
-
-                    return (
-                      <div className="absolute bottom-4 right-4 flex flex-col items-center group z-10">
-                        <div className="w-10 h-10 rounded-full border border-slate-500 bg-slate-800 flex items-center justify-center overflow-hidden">
-                          {photoUrl ? (
-                            <img src={photoUrl} alt={tec.nome} className="w-full h-full object-cover" />
-                          ) : (
-                            <User className="w-5 h-5 text-slate-400" />
-                          )}
-                        </div>
-                        <div className="mt-1 bg-slate-900/80 px-1.5 py-0.5 rounded border border-white/10">
-                          <span className="text-[9px] font-medium text-slate-300 block text-center truncate max-w-[60px]">TEC</span>
-                        </div>
-                        <div className="absolute bottom-full mb-2 opacity-0 group-hover:opacity-100 transition-opacity bg-slate-950 border border-slate-700 p-2 rounded shadow-xl z-20 w-32 pointer-events-none right-0">
-                          <p className="text-xs text-white font-bold mb-1 truncate">{tec.nome}</p>
-                          <div className="flex justify-between text-[10px] text-slate-400">
-                            <span>Preço:</span>
-                            <span className="font-mono text-amber-400">C$ {(tec.preco ?? 0).toFixed(1)}</span>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })()}
-                </div>
-              )}
+              <Campinho loading={loading} result={result} />
             </div>
           </div>
         </section>
@@ -424,36 +314,36 @@ export default function Optimiser() {
                           <span className="ml-auto text-xs font-mono text-emerald-400">{(p.pontos_esperados ?? 0).toFixed(1)}p</span>
                         </div>
                         <p className="text-xs text-slate-400 leading-relaxed italic border-l-2 border-indigo-500/30 pl-3">
-                          {modo === 'mitagem' 
-                            ? (p.pos === 1 || p.pos === 2 || p.pos === 3 
-                                ? "Muralha Estatística. Índice alto de desarmes com multiplicador positivo de SG para a rodada." 
-                                : "Agressividade latente. xG + xA alto combinado com adversário vulnerável.")
+                          {modo === 'mitagem'
+                            ? (p.pos === 1 || p.pos === 2 || p.pos === 3
+                              ? "Muralha Estatística. Índice alto de desarmes com multiplicador positivo de SG para a rodada."
+                              : "Agressividade latente. xG + xA alto combinado com adversário vulnerável.")
                             : "Alto potencial de lucro. GAP entre média e pontos necessários favorável ao orçamento."}
                         </p>
                       </div>
                     ))}
-                    
-                    {/* Reservas na sidebar tbm */}
-                    <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-500 mt-6 mb-2">
-                      Banco de Reservas
-                    </h4>
-                    <div className="grid grid-cols-1 gap-2">
-                      {(result.reserves ?? []).map((p: any, i: number) => (
-                        <div key={`res-${i}`} className="bg-slate-900/40 p-2 rounded-lg border border-white/5 flex gap-3 items-center">
-                           <div className="w-8 h-8 rounded-full border border-slate-600 bg-slate-800 flex items-center justify-center overflow-hidden flex-shrink-0">
-                            {p.foto ? (
-                              <img src={p.foto.replace('FORMATO', '140x140')} alt={p.nome} className="w-full h-full object-cover" />
-                            ) : (
-                              <User className="w-4 h-4 text-slate-400" />
-                            )}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-xs text-white font-medium truncate">{p.nome}</p>
-                            <p className="text-[10px] text-slate-400 font-mono">C$ {(p.preco ?? 0).toFixed(1)}</p>
-                          </div>
+
+                  {/* Reservas na sidebar tbm */}
+                  <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-500 mt-6 mb-2">
+                    Banco de Reservas
+                  </h4>
+                  <div className="grid grid-cols-1 gap-2">
+                    {(result.reserves ?? []).map((p: any, i: number) => (
+                      <div key={`res-${i}`} className="bg-slate-900/40 p-2 rounded-lg border border-white/5 flex gap-3 items-center">
+                        <div className="w-8 h-8 rounded-full border border-slate-600 bg-slate-800 flex items-center justify-center overflow-hidden flex-shrink-0">
+                          {p.foto ? (
+                            <img src={p.foto.replace('FORMATO', '140x140')} alt={p.nome} className="w-full h-full object-cover" />
+                          ) : (
+                            <User className="w-4 h-4 text-slate-400" />
+                          )}
                         </div>
-                      ))}
-                    </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs text-white font-medium truncate">{p.nome}</p>
+                          <p className="text-[10px] text-slate-400 font-mono">C$ {(p.preco ?? 0).toFixed(1)}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>

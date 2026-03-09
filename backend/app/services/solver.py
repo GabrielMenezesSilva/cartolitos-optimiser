@@ -24,17 +24,12 @@ class MathEngine:
         x_vars = pulp.LpVariable.dicts("Tit", [p['id'] for p in players], cat="Binary")
         y_vars = pulp.LpVariable.dicts("Res", [p['id'] for p in players], cat="Binary")
 
-        # 1. Função Objetivo: Maximizar valor específico
-        if self.objective == "mitagem":
-            prob += pulp.lpSum([
-                p['pontos_esperados'] * x_vars[p['id']] + (p['pontos_esperados'] * 0.1) * y_vars[p['id']] 
-                for p in players
-            ]), "Pontuacao_Maximizada"
-        else: # "valorizacao"
-            prob += pulp.lpSum([
-                p['pontos_esperados'] * x_vars[p['id']] + (p['pontos_esperados'] * 0.1) * y_vars[p['id']] 
-                for p in players
-            ]), "Valorizacao_Maximizada"
+        # 1. Função Objetivo: Maximizar valor específico (Pode ser E[P] ou E[Val])
+        prob += pulp.lpSum([
+            float(p.get('solver_score', p.get('pontos_esperados', 0.0)) or 0.0) * x_vars[p['id']] + 
+            (float(p.get('solver_score', p.get('pontos_esperados', 0.0)) or 0.0) * 0.1) * y_vars[p['id']] 
+            for p in players
+        ]), "Objetivo_Maximizacao"
 
         # 2. Restrição de Orçamento (Titulares + Banco)
         prob += pulp.lpSum([
