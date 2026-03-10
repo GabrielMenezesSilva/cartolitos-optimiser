@@ -99,11 +99,13 @@ class DataProcessor:
                         adv_pos = int(part.get('clube_visitante_posicao' if is_home else 'clube_casa_posicao', 10) or 10)
                         if adv_pos == 0: adv_pos = 10
                         
-                        if adv_pos >= 15:
+                        # Poisson Lambda (xGA - Expected Goals Against)
+                        # Adjustment based on historical analysis of Cartola
+                        if adv_pos >= 15: # Weak opponent (relegation zone)
                             lambda_xGA = 0.6 if is_home else 0.85
-                        elif adv_pos <= 6:
+                        elif adv_pos <= 6: # Strong opponent (top table)
                             lambda_xGA = 1.4 if is_home else 1.7
-                        else:
+                        else: # Mid table
                             lambda_xGA = 0.9 if is_home else 1.2
                         break
         
@@ -174,14 +176,26 @@ class DataProcessor:
                     is_away = part.get('clube_visitante_id') == clube_id
                     
                     if is_home or is_away:
+                        # Home Advantage
                         if is_home: 
                             context_multiplier = float(context_multiplier * 1.15)
                         
                         adv_pos_raw = part.get('clube_visitante_posicao' if is_home else 'clube_casa_posicao', 10)
                         adv_pos = int(adv_pos_raw) if adv_pos_raw is not None else 10
-                        if pos_id in [4, 5] and adv_pos >= 17:
-                            context_multiplier = float(context_multiplier * 1.20)
-                            reasons.append(f"Enfrenta equipe no Z4 (Pos: {adv_pos})")
+                        
+                        # Pontos Cedidos (Conceded Points Based on Position and Opponent Quality)
+                        # Attackers vs Weak Defenses
+                        if pos_id in [4, 5] and adv_pos >= 15:
+                            context_multiplier = float(context_multiplier * 1.25)
+                            reasons.append(f"Atacante contra defesa frágil (Z4 - Pos {adv_pos})")
+                        # Defenders vs Top Teams (More tackles / DS but risk of losing SG - SG risk is handled by Poisson)
+                        elif pos_id in [2, 3] and adv_pos <= 6:
+                            context_multiplier = float(context_multiplier * 1.10)
+                            reasons.append(f"Potencial alto de Desarmes (Adversário Top {adv_pos})")
+                        # Midfielders vs Weak Teams
+                        elif pos_id == 4 and adv_pos >= 13:
+                            context_multiplier = float(context_multiplier * 1.15)
+                        
                         break
 
         final_ep: float = float(base_projection * context_multiplier)

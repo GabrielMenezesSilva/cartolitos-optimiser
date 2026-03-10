@@ -1,0 +1,29 @@
+# 🎯 Cartolitos Optimiser - Loki Mode Final Plan (Revised)
+
+*Loki-Mode Activating Skills: ui-ux-pro-max, react-best-practices, python-pro, data-scientist*
+
+### **Fase 1: Reformulação Visual Completa e Deploy do Front (PRIORIDADE MÁXIMA)**
+- [ ] Recrutar skill `ui-ux-pro-max` para re-estilizar o painel ([Optimiser.tsx](file:///Users/mrmenezes/Desktop/App%20Cartolitas/frontend/src/pages/Optimiser.tsx) e componentes).
+- [ ] Melhorar [PlayerCard.tsx](file:///Users/mrmenezes/Desktop/App%20Cartolitas/frontend/src/components/PlayerCard.tsx) com visual premium (sombras, modernidade).
+- [ ] Implementar imagem realista de campo de futebol verde no [Campinho.tsx](file:///Users/mrmenezes/Desktop/App%20Cartolitas/frontend/src/components/Campinho.tsx).
+- [ ] Garantir responsividade e UX de altíssimo nível (cores, fontes e feedback visual).
+- [ ] Realizar o Build e Deploy Imediato no Firebase Hosting (`firebase deploy --only hosting`).
+- [ ] Reportar conclusão desta etapa no Notion.
+
+### **Fase 2: Análise Avançada de Dificuldade (PDF & tutoriais)**
+- [ ] Ler e extrair dados do arquivo `Análise Detalhada de Tutoriais Cartola.pdf`.
+- [ ] Inspecionar o repositório `caRtola` para métricas de "pontos cedidos" e "dificuldade de partida".
+- [ ] Integrar lógica de dificuldade de confronto no [analytics.py](file:///Users/mrmenezes/Desktop/App%20Cartolitas/backend/app/services/analytics.py) (Ex: peso de enfrentar um time que cede muitas finalizações).
+- [ ] Reportar conclusão desta etapa no Notion.
+
+### **Fase 3: Refatoração Final do Mínimo Para Valorizar (MV)**
+- [ ] Incorporar a matemática oficial V3 (inflação inter-jogadores) no [market.py](file:///Users/mrmenezes/Desktop/App%20Cartolitas/backend/app/services/market.py) e [analytics.py](file:///Users/mrmenezes/Desktop/App%20Cartolitas/backend/app/services/analytics.py).
+- [ ] Homologar os cálculos com jogadores reais (ex: Léo Vieira) garantindo convergência com o aplicativo.
+- [ ] Ajustar o peso do MV dentro das variáveis do [solver.py](file:///Users/mrmenezes/Desktop/App%20Cartolitas/backend/test_solver.py).
+- [ ] Reportar conclusão desta etapa no Notion.
+
+### **Fase 4: Integração Final, Validação e Deploy Global**
+- [ ] Testar ponta a ponta: front chamando backend, backend devolvendo JSON de "mitagem" vs "valorização" com strings de `reason` refinadas.
+- [ ] Validar tempo de resposta e estabilidade nas rotas do FastAPI (render/deploy/local).
+- [ ] Commit final de todas as alterações (`Loki-mode: Final integration`).
+- [ ] Reportar conclusão do projeto no Notion.

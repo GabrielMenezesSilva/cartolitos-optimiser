@@ -54,33 +54,54 @@ export function Campinho({ loading, result }: CampinhoProps) {
     let delayCounter = 0;
 
     return (
-        <div className="flex-1 flex flex-col justify-between py-6 sm:py-10 gap-6 px-4">
-            {rows.map((row: any[], rowIdx) => (
-                <div key={rowIdx} className="flex justify-around items-center w-full z-10">
-                    {row.map((p: any) => {
-                        delayCounter++;
-                        return (
-                            <PlayerCard
-                                key={p.id}
-                                player={p}
-                                isCaptain={p.is_capitao}
-                                delay={delayCounter}
-                            />
-                        );
-                    })}
-                </div>
-            ))}
+        <div 
+            className="relative flex-1 min-h-[600px] w-full max-w-4xl mx-auto rounded-3xl overflow-hidden border border-white/10 shadow-2xl bg-slate-900 group"
+            style={{
+                backgroundImage: 'url("/campo.png")',
+                backgroundSize: 'cover',
+                backgroundPosition: 'center'
+            }}
+        >
+            {/* Overlay for better readability */}
+            <div className="absolute inset-0 bg-gradient-to-b from-black/20 via-transparent to-black/40 pointer-events-none" />
+            
+            {/* Field Lines Overlay (Optional if image already has them, but adds depth) */}
+            <div className="absolute inset-0 opacity-20 pointer-events-none border-[12px] border-white/20 m-4 rounded-[40px]" />
 
-            {/* Coach Layer */}
-            {tec && (
-                <div className="absolute bottom-6 right-6 z-20">
-                    <PlayerCard
-                        player={tec}
-                        isCoach={true}
-                        delay={delayCounter + 1}
-                    />
-                </div>
-            )}
+            <div className="relative h-full flex flex-col justify-between py-8 sm:py-12 gap-4 px-4">
+                {rows.map((row: any[], rowIdx) => (
+                    <div key={rowIdx} className="flex justify-around items-center w-full z-10">
+                        {row.map((p: any) => {
+                            delayCounter++;
+                            return (
+                                <PlayerCard
+                                    key={p.id}
+                                    player={p}
+                                    isCaptain={p.is_capitao}
+                                    delay={delayCounter}
+                                />
+                            );
+                        })}
+                    </div>
+                ))}
+
+                {/* Coach / Executive Area */}
+                {tec && (
+                    <div className="absolute bottom-6 right-6 z-20">
+                        <PlayerCard
+                            player={tec}
+                            isCoach={true}
+                            delay={delayCounter + 1}
+                        />
+                    </div>
+                )}
+            </div>
+
+            {/* Tactical Info Badge */}
+            <div className="absolute top-4 left-6 bg-black/40 backdrop-blur-md border border-white/10 p-2 rounded-lg z-20">
+                <p className="text-[10px] uppercase tracking-widest text-emerald-400 font-bold">Modo de Otimização</p>
+                <p className="text-white text-xs font-mono">{result.objective === 'valorizacao' ? 'Maximização de Cartoletas' : 'Maximização de Pontos'}</p>
+            </div>
         </div>
     );
 }
