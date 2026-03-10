@@ -1,6 +1,6 @@
 import { type ReactNode } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
-import { LayoutDashboard, TrendingUp, UserCircle, Settings } from 'lucide-react';
+import { TrendingUp, Settings } from 'lucide-react';
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 
@@ -18,8 +18,6 @@ export default function Layout({ children }: LayoutProps) {
 
     const navItems = [
         { name: 'Otimizador', path: '/optimiser', icon: TrendingUp },
-        { name: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
-        { name: 'Perfil', path: '/profile', icon: UserCircle },
     ];
 
     return (
