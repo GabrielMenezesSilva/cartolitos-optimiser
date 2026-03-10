@@ -159,6 +159,10 @@ class DataProcessor:
         
         if ies > 0.05:
             reasons.append(f"IES Alto ({ies:.3f} ações/min)")
+        
+        sg_points, sg_prob = self._calculate_poisson_sg(player, matches)
+        if sg_prob > 40.0:
+            reasons.append(f"Prob. de SG alta (Poisson: {sg_prob}%)")
             
         context_multiplier: float = 1.0 
         if matches and isinstance(matches, dict) and 'partidas' in matches:
