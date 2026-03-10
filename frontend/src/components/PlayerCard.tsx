@@ -78,7 +78,7 @@ export function PlayerCard({ player, isCaptain = false, delay = 0, className, is
             </div>
 
             {/* Premium Hover tooltip */}
-            <div className="absolute bottom-full mb-4 opacity-0 group-hover:opacity-100 transition-all duration-300 group-hover:translate-y-[-8px] bg-slate-950/95 backdrop-blur-2xl border border-white/10 p-4 rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.5)] z-30 w-52 pointer-events-none overflow-hidden underline-none">
+            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-4 opacity-0 group-hover:opacity-100 transition-all duration-300 group-hover:translate-y-[-8px] bg-slate-950/95 backdrop-blur-2xl border border-white/10 p-4 rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.5)] z-50 w-52 pointer-events-none overflow-hidden">
                 <div className="absolute top-0 left-0 w-1 h-full bg-emerald-500" />
 
                 <p className="text-xs text-slate-400 font-bold mb-0.5 uppercase tracking-tighter">{player.pos_nome || 'Jogador'}</p>

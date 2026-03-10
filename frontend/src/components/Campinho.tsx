@@ -54,21 +54,19 @@ export function Campinho({ loading, result }: CampinhoProps) {
     let delayCounter = 0;
 
     return (
-        <div 
-            className="relative flex-1 min-h-[600px] w-full max-w-4xl mx-auto rounded-3xl overflow-hidden border border-white/10 shadow-2xl bg-slate-900 group"
-            style={{
-                backgroundImage: 'url("/campo.png")',
-                backgroundSize: 'cover',
-                backgroundPosition: 'center'
-            }}
-        >
-            {/* Overlay for better readability */}
-            <div className="absolute inset-0 bg-gradient-to-b from-black/20 via-transparent to-black/40 pointer-events-none" />
-            
-            {/* Field Lines Overlay (Optional if image already has them, but adds depth) */}
-            <div className="absolute inset-0 opacity-20 pointer-events-none border-[12px] border-white/20 m-4 rounded-[40px]" />
+        <div className="relative flex-1 min-h-[600px] w-full max-w-4xl mx-auto rounded-3xl border border-white/10 shadow-[0_0_50px_rgba(0,0,0,0.4)] group bg-slate-900">
+            {/* Background Container to clip the rotated image but allow tooltips to overflow the main div */}
+            <div className="absolute inset-0 rounded-3xl overflow-hidden pointer-events-none z-0">
+                <img
+                    src="/campo.png"
+                    alt="Campo"
+                    className="absolute inset-0 w-full h-full object-cover -rotate-90 scale-125 origin-center"
+                />
+                <div className="absolute inset-0 bg-gradient-to-b from-black/20 via-transparent to-black/60" />
+                <div className="absolute inset-0 opacity-20 border-[12px] border-white/20 m-4 rounded-[40px]" />
+            </div>
 
-            <div className="relative h-full flex flex-col justify-between py-8 sm:py-12 gap-4 px-4">
+            <div className="relative h-full flex flex-col justify-between py-8 sm:py-12 gap-4 px-4 z-10 w-full">
                 {rows.map((row: any[], rowIdx) => (
                     <div key={rowIdx} className="flex justify-around items-center w-full z-10">
                         {row.map((p: any) => {
