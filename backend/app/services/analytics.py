@@ -100,15 +100,18 @@ class DataProcessor:
                         if adv_pos == 0: adv_pos = 10
                         
                         # Poisson Lambda (xGA - Expected Goals Against)
-                        # Adjustment based on historical analysis of Cartola
+                        # We simulate "Média Cedida com Mando de Campo" logic for defenders
+                        # The lower the xGA, the higher the probability of Clean Sheet (SG)
                         if adv_pos >= 15: # Weak opponent (relegation zone)
-                            lambda_xGA = 0.6 if is_home else 0.85
+                            lambda_xGA = 0.5 if is_home else 0.8
                         elif adv_pos <= 6: # Strong opponent (top table)
-                            lambda_xGA = 1.4 if is_home else 1.7
+                            lambda_xGA = 1.6 if is_home else 2.0
                         else: # Mid table
-                            lambda_xGA = 0.9 if is_home else 1.2
+                            lambda_xGA = 1.0 if is_home else 1.3
                         break
         
+        # Poisson Formula: P(x; μ) = (e^-μ) (μ^x) / x!
+        # For x = 0 (zero goals conceded, SG), P(0; μ) = e^-μ
         prob_sg = math.exp(-lambda_xGA)
         sg_points = prob_sg * 5.0
         return float(sg_points), float(f"{prob_sg * 100:.1f}")
@@ -157,12 +160,6 @@ class DataProcessor:
         if ies > 0.05:
             reasons.append(f"IES Alto ({ies:.3f} ações/min)")
             
-        sg_points, sg_prob = self._calculate_poisson_sg(player, matches)
-        base_projection = float(base_projection + float(sg_points))
-        
-        if sg_prob > 40.0:
-            reasons.append(f"Prob. de SG alta (Poisson: {sg_prob}%)")
-            
         context_multiplier: float = 1.0 
         if matches and isinstance(matches, dict) and 'partidas' in matches:
             partidas = matches.get('partidas', [])
@@ -176,28 +173,48 @@ class DataProcessor:
                     is_away = part.get('clube_visitante_id') == clube_id
                     
                     if is_home or is_away:
-                        # Home Advantage
-                        if is_home: 
-                            context_multiplier = float(context_multiplier * 1.15)
-                        
                         adv_pos_raw = part.get('clube_visitante_posicao' if is_home else 'clube_casa_posicao', 10)
                         adv_pos = int(adv_pos_raw) if adv_pos_raw is not None else 10
                         
-                        # Pontos Cedidos (Conceded Points Based on Position and Opponent Quality)
-                        # Attackers vs Weak Defenses
-                        if pos_id in [4, 5] and adv_pos >= 15:
-                            context_multiplier = float(context_multiplier * 1.25)
-                            reasons.append(f"Atacante contra defesa frágil (Z4 - Pos {adv_pos})")
-                        # Defenders vs Top Teams (More tackles / DS but risk of losing SG - SG risk is handled by Poisson)
-                        elif pos_id in [2, 3] and adv_pos <= 6:
+                        # "Média Cedida com Mando de Campo" por posição
+                        if is_home:
+                            # Mandante: Vantagem geral base
                             context_multiplier = float(context_multiplier * 1.10)
-                            reasons.append(f"Potencial alto de Desarmes (Adversário Top {adv_pos})")
-                        # Midfielders vs Weak Teams
-                        elif pos_id == 4 and adv_pos >= 13:
-                            context_multiplier = float(context_multiplier * 1.15)
-                        
+                            
+                            # Cede para Atacantes e Meias (Se adv fraco)
+                            if pos_id in [4, 5] and adv_pos >= 14:
+                                context_multiplier = float(context_multiplier * 1.30)
+                                reasons.append(f"Mandante vs Defesa frágil (Adversário Pos {adv_pos})")
+                            elif pos_id in [4, 5] and adv_pos <= 6:
+                                context_multiplier = float(context_multiplier * 0.95)
+                                
+                            # Cede para Defensores (Desarmes/Faltas)
+                            if pos_id in [2, 3] and adv_pos <= 8:
+                                context_multiplier = float(context_multiplier * 1.15)
+                                reasons.append(f"Mandante sofrendo pressão (Alto volume de Desarmes esperados)")
+                                
+                        else: # Visitante
+                            context_multiplier = float(context_multiplier * 0.90) # Desvantagem geral base
+                            
+                            if pos_id in [4, 5] and adv_pos >= 16:
+                                context_multiplier = float(context_multiplier * 1.10)
+                                reasons.append(f"Visitante, mas contra defesa super frágil (Z4)")
+                            elif pos_id in [2, 3] and adv_pos <= 6:
+                                # Visitante contra time forte sofre pressão, muita chance de desarme, mas alto risco de perder SG
+                                context_multiplier = float(context_multiplier * 1.20)
+                                reasons.append(f"Visitante sob forte pressão (Potencial IES Defensivo)")
+                                
                         break
 
+        # Weight SG according to Ousadia
+        # Ousadia baixa (Seguro) = Confia mais em média e IES
+        # Ousadia alta (Ousado) = Confia mais em SG e confrontos favoráveis
+        if ousadia > 6:
+            sg_points = sg_points * 1.2
+            context_multiplier = context_multiplier * 1.1
+            
+        base_projection = float(base_projection + float(sg_points))
+        
         final_ep: float = float(base_projection * context_multiplier)
         
         if int(player.get('status_id', 0) or 0) != 7: 
