@@ -270,7 +270,7 @@ export default function Optimiser() {
           </aside>
 
           {/* Centro: O Campo */}
-          <section className="col-span-1 lg:col-span-6 flex flex-col border border-slate-800/60 rounded-3xl overflow-hidden bg-[#0a0f1d] shadow-2xl relative min-h-[600px] xl:min-h-[750px]">
+          <section className="col-span-1 lg:col-span-6 flex flex-col border border-slate-800/60 rounded-3xl bg-[#0a0f1d] shadow-2xl relative min-h-[600px] xl:min-h-[750px]">
             {/* Inner background glow */}
             <div className="absolute inset-0 bg-emerald-500/5 mix-blend-screen pointer-events-none" />
             <Campinho loading={loading} result={result} />

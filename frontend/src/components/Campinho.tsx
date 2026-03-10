@@ -1,5 +1,6 @@
 import { Cpu } from 'lucide-react';
 import { PlayerCard } from './PlayerCard';
+import { motion } from 'framer-motion';
 
 interface CampinhoProps {
     loading: boolean;
@@ -18,7 +19,7 @@ export function Campinho({ loading, result }: CampinhoProps) {
                     Motor Matemático
                 </h3>
                 <p className="text-sm text-slate-400 max-w-sm">
-                    Ajuste o orçamento, slider de ousadia e clique em processar para invocar a PuLP (O(N)) no backend.
+                    Ajuste o orçamento, slider de ousadia e clique em processar para invocar o PuLP no backend.
                 </p>
             </div>
         );
@@ -43,63 +44,88 @@ export function Campinho({ loading, result }: CampinhoProps) {
 
     const titulares = result.results?.lineup?.filter((p: any) => p.is_titular) ?? [];
 
-    const rows = [
-        titulares.filter((p: any) => p.pos_id === 5), // ATA
-        titulares.filter((p: any) => p.pos_id === 4), // MEI
-        titulares.filter((p: any) => p.pos_id === 2 || p.pos_id === 3), // ZAG + LAT
-        titulares.filter((p: any) => p.pos_id === 1)  // GOL
-    ];
+    // Order: top=attackers, then midfielders, then defenders+fullbacks, then goalkeeper
+    const rows: any[][] = [
+        titulares.filter((p: any) => p.pos_id === 5),               // ATA
+        titulares.filter((p: any) => p.pos_id === 4),               // MEI
+        titulares.filter((p: any) => p.pos_id === 2 || p.pos_id === 3), // LAT + ZAG
+        titulares.filter((p: any) => p.pos_id === 1),               // GOL
+    ].filter(r => r.length > 0);
 
     const tec = titulares.find((p: any) => p.pos_id === 6);
     let delayCounter = 0;
 
     return (
-        <div className="relative flex-1 min-h-[600px] w-full max-w-4xl mx-auto rounded-3xl border border-white/10 shadow-[0_0_50px_rgba(0,0,0,0.4)] group bg-slate-900">
-            {/* Background Container to clip the rotated image but allow tooltips to overflow the main div */}
-            <div className="absolute inset-0 rounded-3xl overflow-hidden pointer-events-none z-0">
+        <div
+            className="relative w-full rounded-3xl border border-white/10 shadow-[0_0_50px_rgba(0,0,0,0.5)] bg-slate-900 overflow-visible"
+            style={{ minHeight: '580px' }}
+        >
+            {/* Field image — portrait orientation, properly cropped */}
+            <div className="absolute inset-0 rounded-3xl overflow-hidden pointer-events-none">
                 <img
                     src="/campo.png"
                     alt="Campo"
-                    className="absolute inset-0 w-full h-full object-cover -rotate-90 scale-125 origin-center"
+                    className="w-full h-full"
+                    style={{
+                        objectFit: 'cover',
+                        objectPosition: 'center',
+                        transform: 'rotate(-90deg) scale(1.8)',
+                        transformOrigin: 'center center',
+                    }}
                 />
-                <div className="absolute inset-0 bg-gradient-to-b from-black/20 via-transparent to-black/60" />
-                <div className="absolute inset-0 opacity-20 border-[12px] border-white/20 m-4 rounded-[40px]" />
+                {/* Dark overlays for readability */}
+                <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-black/10 to-black/50" />
+                <div className="absolute inset-0 bg-emerald-900/10" />
             </div>
 
-            <div className="relative h-full flex flex-col justify-between py-8 sm:py-12 gap-4 px-4 z-10 w-full">
+            {/* Tactical info badge */}
+            <div className="absolute top-4 left-4 bg-black/50 backdrop-blur-md border border-white/10 px-3 py-1.5 rounded-xl z-20">
+                <p className="text-[9px] uppercase tracking-widest text-emerald-400 font-bold">Modo</p>
+                <p className="text-white text-xs font-mono font-bold">
+                    {result.objective === 'valorizacao' ? 'Patrimônio' : 'Mitagem'}
+                </p>
+            </div>
+
+            {/* Players grid — portrait layout */}
+            <div
+                className="relative w-full h-full flex flex-col justify-between"
+                style={{ padding: '52px 16px 20px', minHeight: '580px', zIndex: 10 }}
+            >
                 {rows.map((row: any[], rowIdx) => (
-                    <div key={rowIdx} className="flex justify-around items-center w-full z-10">
+                    <motion.div
+                        key={rowIdx}
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: rowIdx * 0.1 }}
+                        className="flex justify-around items-center w-full"
+                        style={{ zIndex: 10 }}
+                    >
                         {row.map((p: any) => {
                             delayCounter++;
                             return (
-                                <PlayerCard
-                                    key={p.id}
-                                    player={p}
-                                    isCaptain={p.is_capitao}
-                                    delay={delayCounter}
-                                />
+                                <div key={p.id} style={{ position: 'relative', zIndex: 10 }}>
+                                    <PlayerCard
+                                        player={p}
+                                        isCaptain={p.is_capitao}
+                                        delay={delayCounter}
+                                    />
+                                </div>
                             );
                         })}
-                    </div>
+                    </motion.div>
                 ))}
-
-                {/* Coach / Executive Area */}
-                {tec && (
-                    <div className="absolute bottom-6 right-6 z-20">
-                        <PlayerCard
-                            player={tec}
-                            isCoach={true}
-                            delay={delayCounter + 1}
-                        />
-                    </div>
-                )}
             </div>
 
-            {/* Tactical Info Badge */}
-            <div className="absolute top-4 left-6 bg-black/40 backdrop-blur-md border border-white/10 p-2 rounded-lg z-20">
-                <p className="text-[10px] uppercase tracking-widest text-emerald-400 font-bold">Modo de Otimização</p>
-                <p className="text-white text-xs font-mono">{result.objective === 'valorizacao' ? 'Maximização de Cartoletas' : 'Maximização de Pontos'}</p>
-            </div>
+            {/* Coach badge */}
+            {tec && (
+                <div className="absolute bottom-4 right-4 z-20">
+                    <PlayerCard
+                        player={tec}
+                        isCoach={true}
+                        delay={delayCounter + 1}
+                    />
+                </div>
+            )}
         </div>
     );
 }
