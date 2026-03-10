@@ -1,4 +1,6 @@
 import math
+import csv
+import io
 from typing import List, Dict, Any, Optional
 
 class DataProcessor:
@@ -8,6 +10,7 @@ class DataProcessor:
     """
     
     def __init__(self) -> None:
+        self.historical_stats: Dict[int, Dict[str, float]] = {}
         # Definição de pesos originais híbridos (Média + IES/Poisson vão incrementar isso)
         self.strategy_weights = {
             'SEGURO': {
@@ -24,6 +27,25 @@ class DataProcessor:
             }
         }
 
+    def ingest_historical_csv(self, csv_text: str) -> None:
+        if not csv_text or not csv_text.strip(): return
+        reader = csv.DictReader(io.StringIO(csv_text))
+        for row in reader:
+            try:
+                atleta_id_str = row.get('atletas.atleta_id') or row.get('atleta_id')
+                if not atleta_id_str: continue
+                atleta_id = int(atleta_id_str)
+                
+                media_str = row.get('atletas.media_num') or row.get('media_num', '0')
+                jogos_str = row.get('atletas.jogos_num') or row.get('jogos_num', '0')
+                
+                self.historical_stats[atleta_id] = {
+                    'media_num': float(media_str) if media_str.replace('.','',1).isdigit() else 0.0,
+                    'jogos_num': float(jogos_str) if jogos_str.isdigit() else 0.0
+                }
+            except Exception:
+                pass
+
     def _get_interpolated_weights(self, ousadia: int) -> Dict[str, float]:
         if ousadia <= 4: return self.strategy_weights['SEGURO']
         elif ousadia >= 7: return self.strategy_weights['OUSADO']
@@ -39,15 +61,17 @@ class DataProcessor:
     def _calculate_ies(self, scouts: Dict[str, Any], jogos_num: int) -> float:
         """
         Calcula o IES (Índice de Eficiência de Scout): Densidade por minuto jogado.
-        Pesos: DS(1.2), FD(1.2), FF(0.8), FS(0.5), PS(1.0)
+        Pesos Exatos: Gol (8.0), Assistência (5.0), Trave (3.0), Defendida (1.2), Fora (0.8), Desarme (1.2), SG (5.0)
         """
-        ds = float(scouts.get('DS', 0) or 0)
+        g  = float(scouts.get('G', 0) or 0)
+        a  = float(scouts.get('A', 0) or 0)
+        ft = float(scouts.get('FT', 0) or 0)
         fd = float(scouts.get('FD', 0) or 0)
         ff = float(scouts.get('FF', 0) or 0)
-        fs = float(scouts.get('FS', 0) or 0)
-        ps = float(scouts.get('PS', 0) or 0)
+        ds = float(scouts.get('DS', 0) or 0)
+        sg = float(scouts.get('SG', 0) or 0)
         
-        total_actions = (ds * 1.2) + (fd * 1.2) + (ff * 0.8) + (fs * 0.5) + (ps * 1.0)
+        total_actions = (g * 8.0) + (a * 5.0) + (ft * 3.0) + (fd * 1.2) + (ff * 0.8) + (ds * 1.2) + (sg * 5.0)
         minutos_jogados = float(max(jogos_num * 90, 90)) # Aproximação
         
         return float(total_actions / minutos_jogados)
@@ -92,57 +116,75 @@ class DataProcessor:
         Calcula os 'pontos_esperados' usando IES, Poisson para SG e scouts normais.
         Retorna (Expected Points, Reason).
         """
-        scouts = player.get('scout', {})
+        scouts: Dict[str, Any] = player.get('scout', {})
         if not isinstance(scouts, dict): scouts = {}
-        jogos_num = int(player.get('jogos_num', 1) or 1)
+        
+        jogos_num_raw = player.get('jogos_num', 1)
+        jogos_num: int = int(jogos_num_raw) if jogos_num_raw is not None else 1
         jogos_num = max(jogos_num, 1)
         
-        weights = self._get_interpolated_weights(ousadia)
+        weights: Dict[str, float] = self._get_interpolated_weights(ousadia)
         reasons: List[str] = []
         
-        total_derived = 0.0
+        total_derived: float = 0.0
         for sk, sv in scouts.items():
-            if sk in weights and sk != 'SG': 
-                total_derived += float(sv or 0) * float(weights[sk])
+            k = str(sk)
+            if k in weights and k != 'SG': 
+                val = float(sv) if sv is not None else 0.0
+                w = float(weights[k])
+                total_derived = float(total_derived + (val * w))
                 
-        base_projection = float(total_derived / jogos_num)
+        base_projection: float = float(total_derived / float(jogos_num))
         
         if jogos_num < 3:
-            media_num = float(player.get('media_num', 0.0) or 0.0)
-            base_projection = float((base_projection + media_num * 2) / 3.0)
+            atleta_id_raw = player.get('atleta_id', 0)
+            atleta_id = int(atleta_id_raw) if atleta_id_raw is not None else 0
             
-        ies = self._calculate_ies(scouts, jogos_num)
-        base_projection += (ies * 100) 
+            media_num: float = 0.0
+            if atleta_id in self.historical_stats:
+                media_num = float(self.historical_stats[atleta_id].get('media_num', 0.0))
+            else:
+                media_num_raw = player.get('media_num', 0.0)
+                media_num = float(media_num_raw) if media_num_raw is not None else 0.0
+                
+            base_projection = float((base_projection + (media_num * 2.0)) / 3.0)
+            
+        ies: float = float(self._calculate_ies(scouts, jogos_num))
+        base_projection = float(base_projection + (ies * 100.0))
         
         if ies > 0.05:
             reasons.append(f"IES Alto ({ies:.3f} ações/min)")
             
         sg_points, sg_prob = self._calculate_poisson_sg(player, matches)
-        base_projection += sg_points
+        base_projection = float(base_projection + float(sg_points))
         
         if sg_prob > 40.0:
             reasons.append(f"Prob. de SG alta (Poisson: {sg_prob}%)")
             
-        context_multiplier = 1.0 
+        context_multiplier: float = 1.0 
         if matches and isinstance(matches, dict) and 'partidas' in matches:
             partidas = matches.get('partidas', [])
             if isinstance(partidas, list):
                 clube_id = player.get('clube_id')
-                pos_id = int(player.get('posicao_id', 0) or 0)
+                pos_id_raw = player.get('posicao_id', 0)
+                pos_id = int(pos_id_raw) if pos_id_raw is not None else 0
                 for part in partidas:
                     if not isinstance(part, dict): continue
                     is_home = part.get('clube_casa_id') == clube_id
                     is_away = part.get('clube_visitante_id') == clube_id
                     
                     if is_home or is_away:
-                        if is_home: context_multiplier *= 1.15
-                        adv_pos = int(part.get('clube_visitante_posicao' if is_home else 'clube_casa_posicao', 10) or 10)
+                        if is_home: 
+                            context_multiplier = float(context_multiplier * 1.15)
+                        
+                        adv_pos_raw = part.get('clube_visitante_posicao' if is_home else 'clube_casa_posicao', 10)
+                        adv_pos = int(adv_pos_raw) if adv_pos_raw is not None else 10
                         if pos_id in [4, 5] and adv_pos >= 17:
-                            context_multiplier *= 1.20
+                            context_multiplier = float(context_multiplier * 1.20)
                             reasons.append(f"Enfrenta equipe no Z4 (Pos: {adv_pos})")
                         break
 
-        final_ep = float(base_projection * context_multiplier)
+        final_ep: float = float(base_projection * context_multiplier)
         
         if int(player.get('status_id', 0) or 0) != 7: 
             final_ep = -999.0
@@ -153,9 +195,6 @@ class DataProcessor:
             
         main_reason = reasons[0]
         return final_ep, main_reason
-
-    def _calculate_mv(self, preco_atual: float, ultima_pontuacao: float) -> float:
-        return float((preco_atual * 0.45) + (ultima_pontuacao * 0.1))
 
     def normalize_players(self, cartola_atletas: Dict[str, Any], ousadia: int = 5, objective: str = "mitagem", cartola_partidas: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
         players: List[Dict[str, Any]] = []
@@ -171,7 +210,9 @@ class DataProcessor:
             
             pts_esperados, reason = self._calculate_expected_points(rp, ousadia, cartola_partidas)
             
-            mv = self._calculate_mv(preco, ultima_pt)
+            # Usando import inline para evitar ciclo, ou importando no modulo
+            from app.services.market import cartola_service
+            mv = cartola_service.calculate_mv(preco, ultima_pt)
             pts_valorizacao = float(pts_esperados - mv)
             
             if objective == "valorizacao":

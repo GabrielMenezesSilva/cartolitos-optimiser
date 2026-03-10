@@ -1,5 +1,5 @@
 import { useAuth } from '../contexts/AuthContext';
-import { logout } from '../lib/firebase';
+import { supabase } from '../lib/supabase';
 import { useNavigate } from 'react-router-dom';
 import {
     LogOut, BarChart2, Zap, TrendingUp, ShieldCheck, History, Cpu, User, Mail, ArrowLeft,
@@ -31,12 +31,12 @@ export default function Profile() {
     const navigate = useNavigate();
 
     const handleLogout = async () => {
-        await logout();
+        await supabase.auth.signOut();
         navigate('/login');
     };
 
-    const initials = user?.displayName
-        ? user.displayName.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()
+    const initials = user?.user_metadata?.full_name
+        ? user.user_metadata.full_name.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()
         : '??';
 
     return (
@@ -70,9 +70,9 @@ export default function Profile() {
                     <div className="relative z-10 flex flex-col sm:flex-row items-start sm:items-center gap-6">
                         {/* Avatar */}
                         <div className="relative flex-shrink-0">
-                            {user?.photoURL ? (
+                            {user?.user_metadata?.avatar_url ? (
                                 <img
-                                    src={user.photoURL}
+                                    src={user.user_metadata.avatar_url}
                                     alt="Avatar"
                                     className="w-20 h-20 rounded-2xl border-2 border-emerald-500/30 shadow-lg shadow-emerald-500/10"
                                 />
@@ -87,7 +87,7 @@ export default function Profile() {
                         {/* Info */}
                         <div className="flex-1">
                             <div className="flex items-center gap-3 mb-1">
-                                <h1 className="text-2xl font-bold text-white">{user?.displayName || 'Cartoleiro'}</h1>
+                                <h1 className="text-2xl font-bold text-white">{user?.user_metadata?.full_name || 'Cartoleiro'}</h1>
                                 <span className="text-xs bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full font-medium">
                                     Engine Access
                                 </span>
@@ -99,7 +99,7 @@ export default function Profile() {
                                 </div>
                                 <div className="flex items-center gap-2 text-slate-400 text-sm">
                                     <User className="w-3.5 h-3.5" />
-                                    UID: <span className="font-mono text-slate-500 text-xs">{user?.uid?.slice(0, 12)}...</span>
+                                    UID: <span className="font-mono text-slate-500 text-xs">{user?.id?.slice(0, 12)}...</span>
                                 </div>
                             </div>
                         </div>

@@ -20,26 +20,28 @@ export function PlayerCard({ player, isCaptain = false, delay = 0, className, is
             transition={{ delay: delay * 0.08, type: 'spring', stiffness: 200, damping: 15 }}
             className={cn("flex flex-col items-center group relative cursor-pointer", className)}
         >
-            {/* Avatar / Marker */}
-            <div
-                className={cn(
-                    "w-12 h-12 sm:w-14 sm:h-14 rounded-full border-2 flex items-center justify-center overflow-hidden transition-all duration-300",
-                    isCaptain
-                        ? "border-amber-400 shadow-[0_0_15px_rgba(251,191,36,0.6)] z-10"
-                        : isCoach
-                            ? "border-indigo-500 bg-slate-800 w-10 h-10 sm:w-12 sm:h-12"
-                            : "border-emerald-500 bg-slate-800 shadow-[0_4px_10px_rgba(0,0,0,0.5)] group-hover:border-emerald-400 group-hover:shadow-[0_0_15px_rgba(16,185,129,0.5)]"
-                )}
-            >
-                {photoUrl ? (
-                    <img src={photoUrl} alt={player.nome} className="w-full h-full object-cover transition-transform group-hover:scale-110" />
-                ) : (
-                    <User className={cn("w-6 h-6", isCaptain ? "text-amber-400" : isCoach ? "text-indigo-400" : "text-emerald-400")} />
-                )}
+            {/* Avatar Wrapper so badge isn't hidden by overflow */}
+            <div className="relative">
+                <div
+                    className={cn(
+                        "w-12 h-12 sm:w-14 sm:h-14 rounded-full border-2 flex items-center justify-center overflow-hidden transition-all duration-300",
+                        isCaptain
+                            ? "border-amber-400 shadow-[0_0_15px_rgba(251,191,36,0.6)] z-10"
+                            : isCoach
+                                ? "border-indigo-500 bg-slate-800 w-10 h-10 sm:w-12 sm:h-12"
+                                : "border-emerald-500 bg-slate-800 shadow-[0_4px_10px_rgba(0,0,0,0.5)] group-hover:border-emerald-400 group-hover:shadow-[0_0_15px_rgba(16,185,129,0.5)]"
+                    )}
+                >
+                    {photoUrl ? (
+                        <img src={photoUrl} alt={player.nome} className="w-full h-full object-cover transition-transform group-hover:scale-110" />
+                    ) : (
+                        <User className={cn("w-6 h-6", isCaptain ? "text-amber-400" : isCoach ? "text-indigo-400" : "text-emerald-400")} />
+                    )}
+                </div>
 
                 {/* Captain badge */}
                 {isCaptain && (
-                    <div className="absolute -bottom-1 -right-1 bg-gradient-to-br from-amber-400 to-amber-600 text-slate-900 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold border border-slate-900 z-10 shadow-lg">
+                    <div className="absolute -bottom-1 -right-1 bg-gradient-to-br from-amber-400 to-amber-600 text-slate-900 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold border border-slate-900 z-20 shadow-lg">
                         C
                     </div>
                 )}

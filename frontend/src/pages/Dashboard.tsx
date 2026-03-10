@@ -3,7 +3,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { fetchLineupHistory } from '../services/api';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { LogOut, History, ShieldAlert, Cpu, User } from 'lucide-react';
-import { logout } from '../lib/firebase';
+import { supabase } from '../lib/supabase';
 import { useNavigate } from 'react-router-dom';
 
 export default function Dashboard() {
@@ -30,7 +30,7 @@ export default function Dashboard() {
     }, [token]);
 
     const handleLogout = async () => {
-        await logout();
+        await supabase.auth.signOut();
         navigate('/login');
     };
 
@@ -63,13 +63,13 @@ export default function Dashboard() {
                             onClick={() => navigate('/profile')}
                             className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/5 hover:bg-white/10 transition-colors"
                         >
-                            {user?.photoURL ? (
-                                <img src={user.photoURL} alt="Avatar" className="w-6 h-6 rounded-full border border-white/10" />
+                            {user?.user_metadata?.avatar_url ? (
+                                <img src={user.user_metadata.avatar_url} alt="Avatar" className="w-6 h-6 rounded-full border border-white/10" />
                             ) : (
                                 <User className="w-4 h-4 text-slate-400" />
                             )}
                             <div className="hidden sm:block text-left">
-                                <p className="text-xs font-semibold text-white leading-none">{user?.displayName}</p>
+                                <p className="text-xs font-semibold text-white leading-none">{user?.user_metadata?.full_name}</p>
                             </div>
                         </button>
                         <button onClick={handleLogout} className="p-2 bg-white/5 hover:bg-red-500/10 hover:text-red-400 rounded-lg text-slate-400 transition-colors" title="Sair">

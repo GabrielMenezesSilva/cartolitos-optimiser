@@ -1,0 +1,9 @@
+INFO:     Started server process [38285]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+INFO:     127.0.0.1:54026 - "GET /api/cartola/optimize-real?budget=150&formation=4-3-3&ousadia=0&modo=mitagem HTTP/1.1" 404 Not Found
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [38285]

@@ -1,6 +1,5 @@
 import { Cpu } from 'lucide-react';
 import { PlayerCard } from './PlayerCard';
-import { motion } from 'framer-motion';
 
 interface CampinhoProps {
     loading: boolean;

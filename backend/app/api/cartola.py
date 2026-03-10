@@ -42,6 +42,17 @@ async def optimize_real(budget: float = 140.0, formation: str = "4-3-3", ousadia
         # 1. Obter Atletas da API
         cartola_data = await cartola_service.get_atletas_mercado()
         
+        # 1.2 Obter Dados Históricos e Ingerir
+        try:
+            status_mercado = await cartola_service.get_mercado_status()
+            rodada_atual = status_mercado.get('rodada_atual', 2)
+            rodada_anterior = max(1, rodada_atual - 1)
+            csv_data = await cartola_service.get_historical_data(2024, rodada_anterior)
+            if csv_data:
+                data_processor.ingest_historical_csv(csv_data)
+        except Exception:
+            pass # Continua sem histórico se der erro, usando médias atuais
+
         # 1.5 Obter Partidas da API para Multiplicador de Contexto (FDR)
         try:
             cartola_partidas = await cartola_service.get_partidas()
