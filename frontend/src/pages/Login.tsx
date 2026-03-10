@@ -96,7 +96,7 @@ export default function Login() {
                     {features.map((f) => (
                         <div
                             key={f.title}
-                            className="bg-slate-900/60 border border-white/5 rounded-xl p-4 hover:border-white/10 transition-colors"
+                            className="glass-panel p-4 hover:border-white/10 transition-colors"
                         >
                             <div className="mb-2">{f.icon}</div>
                             <p className="text-sm font-semibold text-white mb-1">{f.title}</p>
@@ -142,7 +142,7 @@ export default function Login() {
                     </p>
 
                     {/* Decorative score preview */}
-                    <div className="mt-10 bg-slate-900/80 border border-white/5 rounded-xl p-4">
+                    <div className="mt-10 glass-panel p-4">
                         <p className="text-xs text-slate-500 uppercase tracking-wider mb-3 font-medium">Preview — última escalação</p>
                         <div className="grid grid-cols-3 gap-3 text-center">
                             {[
