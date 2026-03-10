@@ -16,10 +16,10 @@ export function Campinho({ loading, result }: CampinhoProps) {
                     <Cpu className="w-10 h-10 text-emerald-500/80" />
                 </div>
                 <h3 className="text-xl font-bold bg-gradient-to-r from-emerald-400 to-teal-200 bg-clip-text text-transparent mb-2">
-                    Motor Matemático
+                    Gerador de Escalação
                 </h3>
                 <p className="text-sm text-slate-400 max-w-sm">
-                    Ajuste o orçamento, slider de ousadia e clique em processar para invocar o PuLP no backend.
+                    Ajuste o seu orçamento e selecione a estratégia desejada para criar a melhor opção de time.
                 </p>
             </div>
         );
@@ -36,7 +36,7 @@ export function Campinho({ loading, result }: CampinhoProps) {
                 </div>
                 <div className="text-center">
                     <h3 className="text-lg font-bold text-white mb-1">Analisando milhares de combinações</h3>
-                    <p className="text-xs text-emerald-400 font-mono">Maximizando Expectativa de Retorno (E[P])</p>
+                    <p className="text-xs text-emerald-400 font-mono">Encontrando os melhores jogadores para o seu time</p>
                 </div>
             </div>
         );
@@ -60,29 +60,30 @@ export function Campinho({ loading, result }: CampinhoProps) {
             className="relative w-full rounded-3xl border border-white/10 shadow-[0_0_50px_rgba(0,0,0,0.5)] bg-slate-900 overflow-visible"
             style={{ minHeight: '580px' }}
         >
-            {/* Field image — portrait orientation, properly cropped */}
+            {/* Field image — premium replacement */}
             <div className="absolute inset-0 rounded-3xl overflow-hidden pointer-events-none">
                 <img
-                    src="/campo.png"
+                    src="/campo_premium.png"
                     alt="Campo"
                     className="w-full h-full"
                     style={{
                         objectFit: 'cover',
                         objectPosition: 'center',
-                        transform: 'rotate(-90deg) scale(1.8)',
+                        transform: 'scale(1.2)',
                         transformOrigin: 'center center',
                     }}
                 />
                 {/* Dark overlays for readability */}
-                <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-black/10 to-black/50" />
-                <div className="absolute inset-0 bg-emerald-900/10" />
+                <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-black/30 to-black/70" />
             </div>
 
             {/* Tactical info badge */}
-            <div className="absolute top-4 left-4 bg-black/50 backdrop-blur-md border border-white/10 px-3 py-1.5 rounded-xl z-20">
-                <p className="text-[9px] uppercase tracking-widest text-emerald-400 font-bold">Modo</p>
+            <div className={`absolute top-4 left-4 bg-black/50 backdrop-blur-md border px-3 py-1.5 rounded-xl z-20 ${result.objective === 'valorizacao' ? 'border-amber-500/50' : 'border-emerald-500/50'}`}>
+                <p className={`text-[9px] uppercase tracking-widest font-bold ${result.objective === 'valorizacao' ? 'text-amber-400' : 'text-emerald-400'}`}>
+                    Estratégia
+                </p>
                 <p className="text-white text-xs font-mono font-bold">
-                    {result.objective === 'valorizacao' ? 'Patrimônio' : 'Mitagem'}
+                    {result.objective === 'valorizacao' ? 'Foco em Cartoletas' : 'Foco em Pontuação'}
                 </p>
             </div>
 

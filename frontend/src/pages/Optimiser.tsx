@@ -108,9 +108,9 @@ export default function Optimiser() {
       <div className="w-full px-6 py-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-slate-800/50 bg-[#0f172a]/30 backdrop-blur-md sticky top-0 z-30">
         <div>
           <h1 className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-emerald-100 to-teal-100 tracking-tight">
-            Motor de Escalação
+            Gerador de Escalação
           </h1>
-          <p className="text-sm text-slate-400 mt-1">Otimize seu elenco utilizando algoritmos avançados e Inteligência Artificial.</p>
+          <p className="text-sm text-slate-400 mt-1">Gere o melhor time possível baseando-se no cruzamento de dados de favoritismo e histórico.</p>
         </div>
 
         <div className="flex items-center gap-3">
@@ -164,7 +164,7 @@ export default function Optimiser() {
                 {/* Objetivo */}
                 <div>
                   <label className="text-xs font-bold text-slate-500 uppercase tracking-widest block mb-3">
-                    Modo Operacional
+                    Estratégia Principal
                   </label>
                   <div className="p-1 bg-slate-900 rounded-xl flex gap-1 border border-slate-800/80 shadow-inner">
                     <button
@@ -174,7 +174,7 @@ export default function Optimiser() {
                           ? 'bg-gradient-to-br from-emerald-500 to-teal-600 text-white shadow-md'
                           : 'text-slate-400 hover:text-slate-200'}`}
                     >
-                      <Zap className="w-4 h-4" /> Mitagem
+                      <Zap className="w-4 h-4" /> Pontuação
                     </button>
                     <button
                       onClick={() => setModo('valorizacao')}
@@ -183,7 +183,7 @@ export default function Optimiser() {
                           ? 'bg-gradient-to-br from-amber-500 to-orange-600 text-white shadow-md'
                           : 'text-slate-400 hover:text-slate-200'}`}
                     >
-                      <TrendingUp className="w-4 h-4" /> Patrimônio
+                      <TrendingUp className="w-4 h-4" /> Cartoletas
                     </button>
                   </div>
                 </div>
@@ -262,7 +262,7 @@ export default function Optimiser() {
                 <div className="w-8 h-8 rounded-lg bg-indigo-500/10 flex items-center justify-center border border-indigo-500/20">
                   <Zap className="w-4 h-4 text-indigo-400" />
                 </div>
-                Indicadores Chave
+                Resumo da Escalação
               </h3>
 
               {!result ? (
@@ -281,20 +281,27 @@ export default function Optimiser() {
                   {/* Totals */}
                   <div className="grid grid-cols-2 gap-4">
                     <div className="bg-slate-900/60 border border-slate-800/80 rounded-2xl p-4 flex flex-col items-center justify-center text-center shadow-lg shadow-black/20">
-                      <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mb-1.5">Investimento</p>
+                      <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mb-1.5">Custo Total</p>
                       <h3 className="text-2xl font-mono font-black text-white">C$ {(result.meta?.total_cost ?? 0).toFixed(1)}</h3>
                     </div>
                     <div className="bg-emerald-950/20 border border-emerald-500/20 rounded-2xl p-4 flex flex-col items-center justify-center text-center shadow-lg shadow-emerald-900/10">
-                      <p className="text-[10px] text-emerald-500/80 font-bold uppercase tracking-widest mb-1.5">Retorno (E[P])</p>
+                      <p className="text-[10px] text-emerald-500/80 font-bold uppercase tracking-widest mb-1.5">Pontuação Esperada</p>
                       <h3 className="text-2xl font-mono font-black text-emerald-400">{(result.meta?.total_expected_points ?? 0).toFixed(1)}</h3>
                     </div>
+                  </div>
+
+                  {/* Legend */}
+                  <div className="bg-slate-900/40 p-3 mt-1 mb-2 flex flex-col gap-1 rounded-xl border border-slate-800">
+                    <p className="text-[10px] text-slate-400 leading-relaxed">
+                      <strong className="text-slate-200">Pontuação Esperada:</strong> Baseada no histórico do jogador, mando de campo e força do adversário. Considera favoritismo e chance de não tomar gols.
+                    </p>
                   </div>
 
                   {/* Highlights */}
                   <div className="flex-1 flex flex-col gap-3 min-h-0">
                     <div className="flex items-center justify-between pb-2 border-b border-slate-800/50">
                       <h4 className="text-xs font-bold uppercase tracking-widest text-slate-400">
-                        Destaques do Algoritmo
+                        Principais Jogadores
                       </h4>
                     </div>
 
