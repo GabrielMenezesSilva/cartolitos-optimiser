@@ -744,22 +744,69 @@ class DataProcessor:
                     if not (home_match or away_match):
                         continue
 
+                    valida = part.get('valida', True)
+                    if not valida:
+                        return 0.0, "Jogo Inválido (Cancelado/Adiado)"
+
                     is_home = home_match
                     adv_id = part.get('clube_visitante_id' if is_home else 'clube_casa_id')
                     adv_pos = int(part.get('clube_visitante_posicao' if is_home else 'clube_casa_posicao', 10) or 10)
-                    if adv_pos == 0:
-                        adv_pos = 10
+                    my_pos = int(part.get('clube_casa_posicao' if is_home else 'clube_visitante_posicao', 10) or 10)
+                    
+                    if adv_pos == 0: adv_pos = 10
+                    if my_pos == 0: my_pos = 10
+
+                    # ────────────────────────────────────────────────────────
+                    # NOVO: Momentum (Aproveitamento) e Favoritismo (Match Difficulty)
+                    # ────────────────────────────────────────────────────────
+                    aprov_meu = part.get('aproveitamento_mandante' if is_home else 'aproveitamento_visitante', [])
+                    aprov_adv = part.get('aproveitamento_visitante' if is_home else 'aproveitamento_mandante', [])
+                    
+                    if isinstance(aprov_meu, list) and isinstance(aprov_adv, list):
+                        vitorias_minhas = aprov_meu.count('v')
+                        derrotas_minhas = aprov_meu.count('d')
+                        vitorias_adv = aprov_adv.count('v')
+                        derrotas_adv = aprov_adv.count('d')
+                        
+                        momentum_diff = (vitorias_minhas - derrotas_minhas) - (vitorias_adv - derrotas_adv)
+                        context_multiplier *= max(0.80, min(1.20, 1.0 + (momentum_diff * 0.03)))
+
+                    pos_diff = my_pos - adv_pos # Positivo: o meu time está Pior na tabela
+                    
+                    if pos_diff >= 5: # Sou Zebra
+                        underdog_penalty = max(0.35, 1.0 - (pos_diff * 0.04))
+                        if not is_home:
+                            underdog_penalty *= 0.80 # Zebra jogando fora = reduz mais ainda
+                        context_multiplier *= underdog_penalty
+                        reasons.append(f"Zebra (Pos {my_pos} vs {adv_pos}{' Fora' if not is_home else ''})")
+                    elif pos_diff <= -5: # Sou Favorito
+                        favorite_bonus = min(1.35, 1.0 + (abs(pos_diff) * 0.025))
+                        if is_home:
+                            favorite_bonus *= 1.10 # Favorito jogando em casa
+                        context_multiplier *= favorite_bonus
+                        reasons.append(f"Favorito (Pos {my_pos} vs {adv_pos}{' Casa' if is_home else ''})")
 
                     # STEP 4: Poisson com λ REAL (histórico de gols)
                     if pos_id in DEFENSIVE_POSITIONS:
                         # Para defensores: λ do adversário atacando NOSSO clube
                         lambda_xga = self.poisson.get_lambda_xGA(clube_id, is_home)
                         prob_sg = math.exp(-lambda_xga)
+                        
+                        # Ajuste fino da prob de SG baseado no favoritismo
+                        if pos_diff >= 5: # Zebra dificilmente segura SG
+                            prob_sg *= max(0.1, 1.0 - (pos_diff * 0.06))
+                            if not is_home: prob_sg *= 0.6
+                        elif pos_diff <= -5: # Favorito tem mais chance
+                            prob_sg = min(0.95, prob_sg * (1.0 + (abs(pos_diff) * 0.03)))
+                            if is_home: prob_sg *= 1.1
+                            
+                        prob_sg = min(0.95, prob_sg)
                         sg_points = prob_sg * 5.0
                         base_projection += sg_points
+                        
                         sg_pct = prob_sg * 100
                         if sg_pct > 40:
-                            reasons.append(f"Prob. SG: {sg_pct:.1f}% (Poisson λ={lambda_xga:.2f})")
+                            reasons.append(f"Prob. SG alta: {sg_pct:.1f}%")
                     else:
                         # Para Atacantes/Meias: usa strength de ataque do próprio clube
                         atk_strength = self.poisson.get_attack_strength(clube_id, is_home)
@@ -776,24 +823,15 @@ class DataProcessor:
                         context_multiplier *= difficulty_mult
 
                         if difficulty_mult > 1.15:
-                            reasons.append(f"Adversário cede muito pts p/ {POS_NAMES.get(pos_id,'?')} (MC={media_cedida_val:.1f})")
+                            reasons.append(f"Adv cede mtos pts p/ {POS_NAMES.get(pos_id,'?')} (MC={media_cedida_val:.1f})")
                         elif difficulty_mult < 0.85:
-                            reasons.append(f"Adversário forte — baixa cessão p/ {POS_NAMES.get(pos_id,'?')} (MC={media_cedida_val:.1f})")
+                            reasons.append(f"Adv forte — baixa cessão p/ {POS_NAMES.get(pos_id,'?')} (MC={media_cedida_val:.1f})")
                     else:
-                        # Fallback: posição na tabela quando não temos média cedida
+                        # Fallback se não temos adv_id mapeado no MediaCedida
                         if is_home:
                             context_multiplier *= 1.10
-                            if pos_id in [4, 5] and adv_pos >= 14:
-                                context_multiplier *= 1.30
-                                reasons.append(f"Mandante vs defesa frágil (pos {adv_pos})")
-                            elif pos_id in [2, 3] and adv_pos <= 8:
-                                context_multiplier *= 1.15
                         else:
                             context_multiplier *= 0.90
-                            if pos_id in [4, 5] and adv_pos >= 16:
-                                context_multiplier *= 1.10
-                            elif pos_id in [2, 3] and adv_pos <= 6:
-                                context_multiplier *= 1.20
 
                     break  # só processa a primeira partida encontrada
 
