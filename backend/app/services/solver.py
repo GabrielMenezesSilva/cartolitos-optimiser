@@ -103,7 +103,9 @@ class MathEngine:
                     "clube_id": p.get('clube_id'),
                     "is_titular": is_titular,
                     "is_capitao": bool(is_captain),
-                    "reason": p.get('reason', 'N/A')
+                    "reason": p.get('reason', 'N/A'),
+                    "perfil": p.get('perfil', 'Desconhecido'),
+                    "consistencia": p.get('consistencia', 0.5),
                 })
 
         # Sort lineup for better presentation: Goalkeeper, Defenders, Midfielders, Attackers, Coach, Subs

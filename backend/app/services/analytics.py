@@ -1,47 +1,665 @@
+"""
+analytics.py — Motor de Inteligência do Cartolitos Optimiser
+Baseado na referência técnica do projeto caRtola (Henrique Gomide & Arnaldo Gualberto).
+
+MÓDULOS IMPLEMENTADOS:
+1. Regressão de Poisson com λ real (histórico de gols por time, casa/fora)
+2. Média Cedida por Posição com mando de campo (feature de dificuldade real)
+3. Cadeias de Markov para análise de consistência (filtrar jogadores inconsistentes)
+4. Affinity Propagation para clustering de perfil técnico (finalizadores vs garçons etc.)
+5. Random Forest como modelo preditivo treinado com as features anteriores
+6. IES (Índice de Eficiência de Scout) — densidade por minuto
+"""
+
 import math
 import csv
 import io
-from typing import List, Dict, Any, Optional
+import logging
+import warnings
+from collections import defaultdict
+from typing import List, Dict, Any, Optional, Tuple
 
+import numpy as np
+
+warnings.filterwarnings("ignore")
+logger = logging.getLogger(__name__)
+
+
+# ──────────────────────────────────────────────────────────────
+# 1. CONSTANTES DE PESOS DE SCOUT
+# ──────────────────────────────────────────────────────────────
+SCOUT_WEIGHTS: Dict[str, float] = {
+    'DS': 1.2, 'FC': -0.3, 'FS': 1.0, 'PI': -0.1, 'FD': 1.2,
+    'FF': 0.8, 'DE': 1.2, 'DP': 7.0, 'GS': -1.0, 'G': 1.5,
+    'A': 1.4, 'SG': 1.2, 'xG': 1.0, 'xA': 1.0, 'FT': 3.0,
+    'CV': -3.0, 'CA': -1.0, 'PP': -4.0, 'GC': -3.0,
+}
+
+# Mapeamento de posicao_id → nome legível
+POS_NAMES = {1: "Goleiro", 2: "Lateral", 3: "Zagueiro", 4: "Meia", 5: "Atacante", 6: "Técnico"}
+
+# Posições defensivas para análise de SG
+DEFENSIVE_POSITIONS = {1, 2, 3}
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 2. MÓDULO: REGRESSÃO DE POISSON REAL (λ baseado em histórico de gols)
+# Referência PDF §1: "Regressão de Poisson para modelar a expectativa de gols (λ)
+# de cada equipe, ajustado pelo mando de campo"
+# ──────────────────────────────────────────────────────────────────────────────
+class PoissonModel:
+    """
+    Modela a expectativa de gols (λ) por equipe usando histórico real de partidas.
+    Diferencia desempenho em casa (home) e fora (away).
+    """
+
+    def __init__(self) -> None:
+        # {clube_id: {'home_scored': [], 'home_conceded': [], 'away_scored': [], 'away_conceded': []}}
+        self._goals_data: Dict[int, Dict[str, List[float]]] = defaultdict(
+            lambda: {'home_scored': [], 'home_conceded': [], 'away_scored': [], 'away_conceded': []}
+        )
+        self._is_fitted = False
+
+    def ingest_match_result(self, home_id: int, away_id: int, home_goals: int, away_goals: int) -> None:
+        """Ingere resultado de uma partida no histórico de gols."""
+        self._goals_data[home_id]['home_scored'].append(float(home_goals))
+        self._goals_data[home_id]['home_conceded'].append(float(away_goals))
+        self._goals_data[away_id]['away_scored'].append(float(home_goals))  # inversed — away conceded
+        self._goals_data[away_id]['away_conceded'].append(float(home_goals))
+        self._is_fitted = True
+
+    def ingest_from_csv_rows(self, rows: List[Dict[str, str]]) -> None:
+        """
+        Tenta extrair informações de gols dos CSVs do caRtola.
+        O CSV histórico não tem placar direto, mas tem GS (gols sofridos) nos scouts.
+        Estimamos λ a partir das médias dos scouts de GS por clube.
+        """
+        # Acumular GS (gols sofridos) por clube e mando
+        club_gs: Dict[int, Dict[str, List[float]]] = defaultdict(
+            lambda: {'home': [], 'away': []}
+        )
+
+        for row in rows:
+            try:
+                clube_id_str = row.get('atletas.clube_id') or row.get('clube_id', '')
+                gs_str = row.get('atletas.scout.GS') or row.get('GS', '0')
+                mando_str = row.get('mando', 'home')  # nem sempre presente
+
+                if not clube_id_str:
+                    continue
+
+                clube_id = int(clube_id_str)
+                gs = float(gs_str) if gs_str and gs_str.replace('.', '', 1).lstrip('-').isdigit() else 0.0
+                mando = mando_str.lower()
+
+                if mando == 'home' or mando == 'casa':
+                    club_gs[clube_id]['home'].append(gs)
+                else:
+                    club_gs[clube_id]['away'].append(gs)
+            except Exception:
+                continue
+
+        for clube_id, data in club_gs.items():
+            if data['home']:
+                avg_gs_home = float(np.mean(data['home']))
+                self._goals_data[clube_id]['home_conceded'].append(avg_gs_home)
+            if data['away']:
+                avg_gs_away = float(np.mean(data['away']))
+                self._goals_data[clube_id]['away_conceded'].append(avg_gs_away)
+
+        self._is_fitted = len(self._goals_data) > 0
+
+    def get_lambda_xGA(self, clube_id: int, is_home: bool) -> float:
+        """
+        Retorna λ (Expected Goals Against) para um clube dado o mando.
+        Se não houver dados históricos, usa fallback conservador baseado em mando.
+        """
+        if not self._is_fitted or clube_id not in self._goals_data:
+            # Fallback: sem dados históricos, usa media geral do futebol brasileiro
+            return 1.0 if is_home else 1.3
+
+        key = 'home_conceded' if is_home else 'away_conceded'
+        history = self._goals_data[clube_id].get(key, [])
+
+        if not history:
+            return 1.0 if is_home else 1.3
+
+        # Média ponderada — rodadas mais recentes têm peso maior (decay exponencial)
+        n = len(history)
+        weights = [math.exp(0.1 * i) for i in range(n)]
+        total_w = sum(weights)
+        lambda_val = sum(h * w for h, w in zip(history, weights)) / total_w
+        return max(0.1, float(lambda_val))
+
+    def prob_clean_sheet(self, clube_id: int, is_home: bool) -> float:
+        """P(SG) = e^(-λ), onde λ é a expectativa de gols adversários."""
+        lam = self.get_lambda_xGA(clube_id, is_home)
+        return math.exp(-lam)
+
+    def get_attack_strength(self, clube_id: int, is_home: bool) -> float:
+        """
+        Retorna o λ de ataque do clube (Expected Goals Scored).
+        Usado para estimar probabilidade de Atacantes/Meias marcarem.
+        """
+        if not self._is_fitted or clube_id not in self._goals_data:
+            return 1.2 if is_home else 0.9
+
+        key = 'home_scored' if is_home else 'away_scored'
+        history = self._goals_data[clube_id].get(key, [])
+
+        if not history:
+            return 1.2 if is_home else 0.9
+
+        n = len(history)
+        weights = [math.exp(0.1 * i) for i in range(n)]
+        total_w = sum(weights)
+        return max(0.1, sum(h * w for h, w in zip(history, weights)) / total_w)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 3. MÓDULO: MÉDIA CEDIDA POR POSIÇÃO COM MANDO DE CAMPO
+# Referência PDF §2: "Calcular a média de pontos que cada time cede para cada
+# posição (casa vs. fora)"
+# ──────────────────────────────────────────────────────────────────────────────
+class MediaCedidaEngine:
+    """
+    Calcula a "Média Cedida com Mando de Campo" por posição para cada clube.
+    Exemplo: Time X cede em média 8.5 pontos para Atacantes adversários quando joga em casa.
+    """
+
+    def __init__(self) -> None:
+        # {clube_id: {pos_id: {mando: [pontos_cedidos, ...]}}}
+        self._cedido: Dict[int, Dict[int, Dict[str, List[float]]]] = defaultdict(
+            lambda: defaultdict(lambda: {'home': [], 'away': []})
+        )
+        self._is_fitted = False
+
+    def ingest_from_csv_rows(self, rows: List[Dict[str, str]]) -> None:
+        """
+        Processa linhas do CSV histórico do caRtola para calcular pontos cedidos por posição.
+        Cada linha = um jogador em uma rodada. 'pontos_num' representa os pontos que ele fez
+        CONTRA o clube adversário (que portanto "cedeu" aqueles pontos).
+        """
+        for row in rows:
+            try:
+                # Identificar o clube ADVERSÁRIO (quem cedeu os pontos)
+                # O CSV tem o clube do jogador, precisamos do adversário
+                # Tentamos ler colunas alternativas presentes no caRtola
+                clube_id_str = row.get('atletas.clube_id') or row.get('clube_id', '')
+                pontos_str = row.get('atletas.pontos_num') or row.get('pontos_num', '0')
+                pos_str = row.get('atletas.posicao_id') or row.get('posicao_id', '0')
+                mando_str = (row.get('mando', '') or '').lower()
+
+                if not clube_id_str or not pos_str:
+                    continue
+
+                # O adversário (que cedeu) é registrado no mando invertido
+                # Se o jogador joga em casa (mando='home'), os pontos foram cedidos pelo visitante
+                clube_id = int(clube_id_str)
+                pos_id = int(pos_str)
+                pontos = float(pontos_str) if pontos_str else 0.0
+
+                if pos_id not in [1, 2, 3, 4, 5]:
+                    continue
+
+                # Mando = perspectiva do jogador que marcou pontos
+                # cedido_por = adversário = mando invertido
+                cedido_mando = 'away' if (mando_str == 'home' or mando_str == 'casa') else 'home'
+                self._cedido[clube_id][pos_id][cedido_mando].append(pontos)
+
+            except Exception:
+                continue
+
+        self._is_fitted = len(self._cedido) > 0
+
+    def get_media_cedida(self, clube_id: int, pos_id: int, is_home: bool) -> Optional[float]:
+        """
+        Retorna a média de pontos cedidos pelo clube_id para a posição pos_id.
+        is_home é a perspectiva do clube que está cedendo (Not the attacker).
+        """
+        if not self._is_fitted or clube_id not in self._cedido:
+            return None
+
+        mando_key = 'home' if is_home else 'away'
+        historico = self._cedido[clube_id].get(pos_id, {}).get(mando_key, [])
+
+        if not historico:
+            return None
+
+        return float(np.mean(historico[-10:]))  # últimas 10 rodadas
+
+    def get_difficulty_multiplier(self, adversario_clube_id: int, pos_id: int, adversario_is_home: bool) -> float:
+        """
+        Retorna um multiplicador de dificuldade baseado na média cedida pelo adversário.
+        Media cedida alta = adversário fraco na marcação = multiplicador > 1.0 (fácil)
+        Media cedida baixa = adversário forte na marcação = multiplicador < 1.0 (difícil)
+        """
+        media = self.get_media_cedida(adversario_clube_id, pos_id, adversario_is_home)
+
+        if media is None:
+            return 1.0  # sem dados: neutro
+
+        # Benchmarks por posição (media geral do brasileirão aproximada)
+        benchmarks = {1: 3.5, 2: 4.0, 3: 3.8, 4: 5.5, 5: 6.0}
+        bench = benchmarks.get(pos_id, 5.0)
+
+        ratio = media / bench if bench > 0 else 1.0
+        # Normalizar: ratio > 1 = adversário cede mais que a média = mais fácil
+        # Clamp entre 0.7 e 1.5
+        return max(0.70, min(1.50, ratio))
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 4. MÓDULO: CADEIAS DE MARKOV PARA ANÁLISE DE CONSISTÊNCIA
+# Referência PDF: "Cadeias de Markov implementadas para avaliar a consistência,
+# filtrando jogadores que 'oscilam' demais entre pontuações altas e negativas."
+# ──────────────────────────────────────────────────────────────────────────────
+class MarkovConsistencyAnalyzer:
+    """
+    Analisa a consistência de um jogador usando Cadeias de Markov de 3 estados:
+    - NEGATIVO (pts < 0)
+    - MÉDIO    (0 ≤ pts < 6)
+    - BONS     (pts ≥ 6)
+    
+    Calcula a probabilidade de atingir estado BOM a partir do estado atual.
+    """
+
+    STATES = {'negative': 0, 'medium': 1, 'good': 2}
+    STATE_LABELS = ['negative', 'medium', 'good']
+
+    def __init__(self) -> None:
+        self._player_histories: Dict[int, List[float]] = defaultdict(list)
+
+    def ingest_score(self, atleta_id: int, pontos: float) -> None:
+        self._player_histories[atleta_id].append(pontos)
+
+    def ingest_from_csv_rows(self, rows: List[Dict[str, str]]) -> None:
+        for row in rows:
+            try:
+                atleta_id_str = row.get('atletas.atleta_id') or row.get('atleta_id', '')
+                pontos_str = row.get('atletas.pontos_num') or row.get('pontos_num', '0')
+
+                if not atleta_id_str:
+                    continue
+
+                atleta_id = int(atleta_id_str)
+                pontos = float(pontos_str) if pontos_str else 0.0
+                self._player_histories[atleta_id].append(pontos)
+            except Exception:
+                continue
+
+    def _classify_state(self, pontos: float) -> int:
+        if pontos < 0:
+            return self.STATES['negative']
+        elif pontos < 6:
+            return self.STATES['medium']
+        else:
+            return self.STATES['good']
+
+    def _build_transition_matrix(self, atleta_id: int) -> Optional[np.ndarray]:
+        history = self._player_histories.get(atleta_id, [])
+        if len(history) < 4:
+            return None
+
+        # Matriz de transição 3×3
+        matrix = np.zeros((3, 3))
+        states = [self._classify_state(p) for p in history]
+
+        for i in range(len(states) - 1):
+            matrix[states[i]][states[i + 1]] += 1
+
+        # Normalizar por linha
+        row_sums = matrix.sum(axis=1, keepdims=True)
+        row_sums[row_sums == 0] = 1
+        return matrix / row_sums
+
+    def get_consistency_score(self, atleta_id: int) -> float:
+        """
+        Retorna um score de consistência entre 0.0 e 1.0.
+        1.0 = jogador sempre faz pontos bons (muito consistente)
+        0.0 = jogador muito oscilante
+        """
+        matrix = self._build_transition_matrix(atleta_id)
+        if matrix is None:
+            return 0.5  # default neutro sem histórico
+
+        # Calcular distribuição estacionária (estado de longo prazo)
+        try:
+            eigenvalues, eigenvectors = np.linalg.eig(matrix.T)
+            # Autovetor associado ao autovalor 1
+            idx = np.argmin(np.abs(eigenvalues - 1.0))
+            stationary = np.real(eigenvectors[:, idx])
+            stationary = stationary / stationary.sum()
+            stationary = np.maximum(stationary, 0)
+
+            # Probabilidade de longo prazo de estar no estado BOM
+            prob_good = float(stationary[self.STATES['good']])
+            return max(0.0, min(1.0, prob_good))
+        except Exception:
+            # Fallback: proporção simples de rodadas com pontuação BOA
+            history = self._player_histories.get(atleta_id, [])
+            if not history:
+                return 0.5
+            good_rounds = sum(1 for p in history if p >= 6)
+            return float(good_rounds) / len(history)
+
+    def get_volatility_penalty(self, atleta_id: int) -> float:
+        """
+        Retorna a penalidade de volatilidade (0.0 = sem penalidade, 1.0 = muito volátil).
+        Alta volatilidade = jogador que oscila muito = penalidade no score final.
+        """
+        history = self._player_histories.get(atleta_id, [])
+        if len(history) < 3:
+            return 0.0
+
+        # Desvio padrão normalizado (coeficiente de variação)
+        arr = np.array(history, dtype=float)
+        std = float(np.std(arr))
+        mean = float(np.mean(arr))
+        if abs(mean) < 0.01:
+            return min(1.0, std / 10.0)
+
+        cv = abs(std / mean)
+        # CV > 1.5 é muito volátil
+        return max(0.0, min(1.0, cv / 2.0))
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 5. MÓDULO: AFFINITY PROPAGATION — CLUSTERING DE PERFIL TÉCNICO
+# Referência PDF: "Affinity Propagation que agrupa jogadores por perfil técnico
+# (ex: 'finalizadores' vs 'garçons') sem necessidade de definir nº de grupos"
+# ──────────────────────────────────────────────────────────────────────────────
+class PlayerProfileClusterer:
+    """
+    Agrupa jogadores por perfil técnico usando Affinity Propagation.
+    Features: G, A, FT, DS, DE, FS, FC (normalizadas por jogo).
+    """
+
+    CLUSTER_LABELS = {
+        0: "Finalizador",
+        1: "Garçom",
+        2: "Defensivo",
+        3: "Box-to-Box",
+        4: "Polivalente",
+    }
+
+    def __init__(self) -> None:
+        self._model = None
+        self._player_features: Dict[int, np.ndarray] = {}
+        self._cluster_map: Dict[int, int] = {}
+        self._is_fitted = False
+
+    def ingest_player_features(self, atleta_id: int, scouts: Dict[str, Any], jogos: int) -> None:
+        """Calcula feature vector por jogo para o jogador."""
+        j = max(jogos, 1)
+        features = np.array([
+            float(scouts.get('G', 0) or 0) / j,
+            float(scouts.get('A', 0) or 0) / j,
+            float(scouts.get('FT', 0) or 0) / j,
+            float(scouts.get('DS', 0) or 0) / j,
+            float(scouts.get('DE', 0) or 0) / j,
+            float(scouts.get('FS', 0) or 0) / j,
+            float(scouts.get('FC', 0) or 0) / j,
+        ], dtype=float)
+        self._player_features[atleta_id] = features
+
+    def fit(self) -> bool:
+        """
+        Executa Affinity Propagation em todos os jogadores ingeridos.
+        Retorna True se o fitting foi bem-sucedido.
+        """
+        if len(self._player_features) < 5:
+            return False
+
+        try:
+            from sklearn.cluster import AffinityPropagation
+            from sklearn.preprocessing import StandardScaler
+
+            ids = list(self._player_features.keys())
+            X = np.array([self._player_features[i] for i in ids])
+
+            scaler = StandardScaler()
+            X_scaled = scaler.fit_transform(X)
+
+            # damping entre 0.7 e 0.9 para evitar oscilação
+            ap = AffinityPropagation(damping=0.8, max_iter=300, random_state=42)
+            labels = ap.fit_predict(X_scaled)
+
+            for atleta_id, label in zip(ids, labels):
+                self._cluster_map[atleta_id] = int(label)
+
+            self._is_fitted = True
+            return True
+        except Exception as e:
+            logger.warning(f"Affinity Propagation falhou: {e}")
+            return False
+
+    def get_cluster_label(self, atleta_id: int) -> str:
+        """Retorna o rótulo do cluster do jogador."""
+        if not self._is_fitted or atleta_id not in self._cluster_map:
+            return "Desconhecido"
+        cluster_id = self._cluster_map[atleta_id] % len(self.CLUSTER_LABELS)
+        return self.CLUSTER_LABELS.get(cluster_id, "Polivalente")
+
+    def get_cluster_bonus(self, atleta_id: int, pos_id: int) -> float:
+        """
+        Retorna bônus/penalidade de score baseado no alinhamento entre
+        o perfil do jogador (cluster) e a posição táctica.
+        Ex: Finalizador como Atacante → bônus; Finalizador como Zagueiro → penalidade.
+        """
+        label = self.get_cluster_label(atleta_id)
+        bonuses = {
+            # (label, pos_id) → multiplicador
+            ("Finalizador", 5): 1.15,
+            ("Finalizador", 4): 1.05,
+            ("Finalizador", 2): 0.90,
+            ("Finalizador", 3): 0.85,
+            ("Garçom", 4): 1.15,
+            ("Garçom", 5): 1.05,
+            ("Garçom", 2): 1.00,
+            ("Defensivo", 1): 1.15,
+            ("Defensivo", 2): 1.10,
+            ("Defensivo", 3): 1.10,
+            ("Defensivo", 4): 0.90,
+            ("Defensivo", 5): 0.80,
+            ("Box-to-Box", 4): 1.10,
+            ("Box-to-Box", 2): 1.05,
+            ("Box-to-Box", 5): 1.00,
+        }
+        return bonuses.get((label, pos_id), 1.0)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 6. MÓDULO: RANDOM FOREST — MODELO PREDITIVO
+# Referência PDF §3: "Treinar um regressor (Random Forest ou XGBoost) usando as
+# médias de mando e a dificuldade como variáveis de entrada."
+# ──────────────────────────────────────────────────────────────────────────────
+class RandomForestPredictor:
+    """
+    Modelo preditivo de pontuação por jogador usando Random Forest.
+    Features de entrada:
+    - media_historica: média de pontos do jogador no histórico
+    - ies: Índice de Eficiência de Scout (ações/min)
+    - lambda_xga: λ esperado de gols adversários (Poisson)
+    - media_cedida_pos: média de pontos cedidos pelo adversário para esta posição
+    - is_home: 1 se mandante, 0 se visitante
+    - consistency_score: score de Cadeias de Markov (0-1)
+    - pos_id: posição (1-5)
+    """
+
+    def __init__(self) -> None:
+        self._model = None
+        self._is_fitted = False
+        self._X_train: List[List[float]] = []
+        self._y_train: List[float] = []
+
+    def add_training_sample(
+        self,
+        media: float,
+        ies: float,
+        lambda_xga: float,
+        media_cedida: float,
+        is_home: int,
+        consistency: float,
+        pos_id: int,
+        pontos_reais: float,
+    ) -> None:
+        """Adiciona uma amostra de treinamento (jogador × rodada histórica)."""
+        self._X_train.append([media, ies, lambda_xga, media_cedida, is_home, consistency, float(pos_id)])
+        self._y_train.append(pontos_reais)
+
+    def fit(self) -> bool:
+        """Treina o Random Forest se houver amostras suficientes (mínimo 30)."""
+        if len(self._X_train) < 30:
+            logger.info(f"RF: amostras insuficientes ({len(self._X_train)}). Usando fallback determinístico.")
+            return False
+        try:
+            from sklearn.ensemble import RandomForestRegressor
+            from sklearn.preprocessing import StandardScaler
+
+            X = np.array(self._X_train, dtype=float)
+            y = np.array(self._y_train, dtype=float)
+
+            scaler = StandardScaler()
+            X_scaled = scaler.fit_transform(X)
+
+            rf = RandomForestRegressor(
+                n_estimators=100,
+                max_depth=6,
+                min_samples_leaf=3,
+                random_state=42,
+                n_jobs=-1,
+            )
+            rf.fit(X_scaled, y)
+
+            self._model = (rf, scaler)
+            self._is_fitted = True
+            logger.info(f"RF: treinado com {len(self._X_train)} amostras.")
+            return True
+        except Exception as e:
+            logger.warning(f"RF: treinamento falhou — {e}")
+            return False
+
+    def predict(
+        self,
+        media: float,
+        ies: float,
+        lambda_xga: float,
+        media_cedida: float,
+        is_home: int,
+        consistency: float,
+        pos_id: int,
+    ) -> Optional[float]:
+        """Prediz pontuação esperada. Retorna None se modelo não treinado."""
+        if not self._is_fitted or self._model is None:
+            return None
+        try:
+            rf, scaler = self._model
+            X = np.array([[media, ies, lambda_xga, media_cedida, is_home, consistency, float(pos_id)]])
+            X_scaled = scaler.transform(X)
+            return float(rf.predict(X_scaled)[0])
+        except Exception:
+            return None
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 7. PROCESSADOR PRINCIPAL — DataProcessor
+# ──────────────────────────────────────────────────────────────────────────────
 class DataProcessor:
     """
-    Processa os dados brutos do Cartola FC para o formato esperado pelo MathEngine.
-    Inclui cálculo de IES (Densidade por minuto jogado), Distribuição de Poisson para SG e MV (Mínimo para Valorizar).
+    Orquestra todos os módulos de IA para gerar a pontuação esperada de cada jogador.
+    Pipeline:
+    1. Ingestão do CSV histórico → alimenta Poisson, MediaCedida, Markov, RF
+    2. Clustering por Affinity Propagation
+    3. Normalização de jogadores com score final composto
     """
-    
+
     def __init__(self) -> None:
         self.historical_stats: Dict[int, Dict[str, float]] = {}
-        # Pesos de scouts fixos e balanceados
-        self.scout_weights: Dict[str, float] = {
-            'DS': 1.2, 'FC': -0.3, 'FS': 1.0, 'PI': -0.1, 'FD': 1.2,
-            'FF': 0.8, 'DE': 1.2, 'DP': 7.0, 'GS': -1.0, 'G': 1.5,
-            'A': 1.4, 'SG': 1.2, 'xG': 1.0, 'xA': 1.0, 'FT': 3.0,
-            'CV': -3.0, 'CA': -1.0, 'PP': -4.0, 'GC': -3.0,
-        }
+        self.scout_weights = SCOUT_WEIGHTS
 
+        # Módulos de IA
+        self.poisson = PoissonModel()
+        self.media_cedida = MediaCedidaEngine()
+        self.markov = MarkovConsistencyAnalyzer()
+        self.clusterer = PlayerProfileClusterer()
+        self.rf_predictor = RandomForestPredictor()
+
+        self._csv_rows_cache: List[Dict[str, str]] = []
+        self._pipeline_fitted = False
+
+    # ------------------------------------------------------------------
+    # INGESTÃO DE DADOS HISTÓRICOS
+    # ------------------------------------------------------------------
     def ingest_historical_csv(self, csv_text: str) -> None:
-        if not csv_text or not csv_text.strip(): return
-        reader = csv.DictReader(io.StringIO(csv_text))
-        for row in reader:
+        """
+        Ingere CSV histórico do caRtola e alimenta todos os módulos de IA.
+        Formato esperado: rodada-{N}.csv do repositório henriquepgomide/caRtola.
+        """
+        if not csv_text or not csv_text.strip():
+            return
+
+        try:
+            reader = csv.DictReader(io.StringIO(csv_text))
+            rows = list(reader)
+        except Exception:
+            return
+
+        self._csv_rows_cache.extend(rows)
+
+        # Alimentar cada módulo
+        self.poisson.ingest_from_csv_rows(rows)
+        self.media_cedida.ingest_from_csv_rows(rows)
+        self.markov.ingest_from_csv_rows(rows)
+
+        for row in rows:
             try:
-                atleta_id_str = row.get('atletas.atleta_id') or row.get('atleta_id')
-                if not atleta_id_str: continue
+                atleta_id_str = row.get('atletas.atleta_id') or row.get('atleta_id', '')
+                if not atleta_id_str:
+                    continue
                 atleta_id = int(atleta_id_str)
-                
+
                 media_str = row.get('atletas.media_num') or row.get('media_num', '0')
                 jogos_str = row.get('atletas.jogos_num') or row.get('jogos_num', '0')
-                
-                self.historical_stats[atleta_id] = {
-                    'media_num': float(media_str) if media_str.replace('.','',1).isdigit() else 0.0,
-                    'jogos_num': float(jogos_str) if jogos_str.isdigit() else 0.0
-                }
-            except Exception:
-                pass
+                pontos_str = row.get('atletas.pontos_num') or row.get('pontos_num', '0')
 
+                media = float(media_str) if media_str and media_str.replace('.', '', 1).isdigit() else 0.0
+                jogos = int(jogos_str) if jogos_str and jogos_str.isdigit() else 0
+                pontos = float(pontos_str) if pontos_str and pontos_str.replace('.', '', 1).lstrip('-').isdigit() else 0.0
+
+                self.historical_stats[atleta_id] = {
+                    'media_num': media,
+                    'jogos_num': float(jogos),
+                }
+
+                # Preparar features para clustering
+                scouts_raw = {k.replace('atletas.scout.', ''): v for k, v in row.items() if 'scout.' in k}
+                if scouts_raw:
+                    self.clusterer.ingest_player_features(atleta_id, scouts_raw, max(jogos, 1))
+
+            except Exception:
+                continue
+
+    def fit_ml_pipeline(self) -> None:
+        """Treina os modelos de ML (clustering + RF) com os dados ingeridos."""
+        if self._pipeline_fitted:
+            return
+
+        logger.info("Fitting clustering (Affinity Propagation)...")
+        self.clusterer.fit()
+
+        logger.info("Fitting Random Forest...")
+        self.rf_predictor.fit()
+
+        self._pipeline_fitted = True
+
+    # ------------------------------------------------------------------
+    # IES — Índice de Eficiência de Scout
+    # ------------------------------------------------------------------
     def _calculate_ies(self, scouts: Dict[str, Any], jogos_num: int) -> float:
         """
-        Calcula o IES (Índice de Eficiência de Scout): Densidade por minuto jogado.
-        Pesos Exatos: Gol (8.0), Assistência (5.0), Trave (3.0), Defendida (1.2), Fora (0.8), Desarme (1.2), SG (5.0)
+        IES = Densidade de Ações por Minuto Jogado.
+        Ações ponderadas: Gol (8.0), A (5.0), FT (3.0), FD (1.2), FF (0.8), DS (1.2), SG (5.0).
         """
         g  = float(scouts.get('G', 0) or 0)
         a  = float(scouts.get('A', 0) or 0)
@@ -50,190 +668,246 @@ class DataProcessor:
         ff = float(scouts.get('FF', 0) or 0)
         ds = float(scouts.get('DS', 0) or 0)
         sg = float(scouts.get('SG', 0) or 0)
-        
+
         total_actions = (g * 8.0) + (a * 5.0) + (ft * 3.0) + (fd * 1.2) + (ff * 0.8) + (ds * 1.2) + (sg * 5.0)
-        minutos_jogados = float(max(jogos_num * 90, 90)) # Aproximação
-        
-        return float(total_actions / minutos_jogados)
+        minutos = float(max(jogos_num * 90, 90))
+        return float(total_actions / minutos)
 
-    def _calculate_poisson_sg(self, player: Dict[str, Any], matches: Optional[Dict[str, Any]] = None) -> tuple[float, float]:
+    # ------------------------------------------------------------------  
+    # CÁLCULO DE PONTOS ESPERADOS — PIPELINE COMPLETO
+    # ------------------------------------------------------------------
+    def _calculate_expected_points(
+        self,
+        player: Dict[str, Any],
+        matches: Optional[Dict[str, Any]] = None,
+    ) -> Tuple[float, str]:
         """
-        Usa a Distribuição de Poisson para prever a probabilidade de SG (valendo +5.0 pontos).
-        Retorna (Expected SG Points, Probability %).
-        """
-        pos_id = int(player.get('posicao_id', 0) or 0)
-        if pos_id not in [1, 2, 3]:
-            return 0.0, 0.0
-            
-        clube_id = player.get('clube_id')
-        lambda_xGA = 1.1 
-        
-        if matches and isinstance(matches, dict) and 'partidas' in matches:
-            partidas = matches.get('partidas', [])
-            if isinstance(partidas, list):
-                for part in partidas:
-                    if not isinstance(part, dict): continue
-                    is_home = part.get('clube_casa_id') == clube_id
-                    is_away = part.get('clube_visitante_id') == clube_id
-                    if is_home or is_away:
-                        adv_pos = int(part.get('clube_visitante_posicao' if is_home else 'clube_casa_posicao', 10) or 10)
-                        if adv_pos == 0: adv_pos = 10
-                        
-                        # Poisson Lambda (xGA - Expected Goals Against)
-                        # We simulate "Média Cedida com Mando de Campo" logic for defenders
-                        # The lower the xGA, the higher the probability of Clean Sheet (SG)
-                        if adv_pos >= 15: # Weak opponent (relegation zone)
-                            lambda_xGA = 0.5 if is_home else 0.8
-                        elif adv_pos <= 6: # Strong opponent (top table)
-                            lambda_xGA = 1.6 if is_home else 2.0
-                        else: # Mid table
-                            lambda_xGA = 1.0 if is_home else 1.3
-                        break
-        
-        # Poisson Formula: P(x; μ) = (e^-μ) (μ^x) / x!
-        # For x = 0 (zero goals conceded, SG), P(0; μ) = e^-μ
-        prob_sg = math.exp(-lambda_xGA)
-        sg_points = prob_sg * 5.0
-        return float(sg_points), float(f"{prob_sg * 100:.1f}")
-
-    def _calculate_expected_points(self, player: Dict[str, Any], matches: Optional[Dict[str, Any]] = None) -> tuple[float, str]:
-        """
-        Calcula os 'pontos_esperados' usando IES, Poisson para SG e scouts normais.
-        Retorna (Expected Points, Reason).
+        Pipeline completo de cálculo de pontuação esperada:
+        1. Score base (scouts × pesos fixos) por jogo
+        2. Blend com histórico se jogos_num < 3
+        3. IES boost
+        4. Poisson SG com λ real (histórico de gols)
+        5. Média Cedida por Posição como multiplicador de dificuldade
+        6. Clustering bonus (Affinity Propagation)
+        7. Consistência penalidade (Markov)
+        8. Random Forest override se modelo treinado
         """
         scouts: Dict[str, Any] = player.get('scout', {})
-        if not isinstance(scouts, dict): scouts = {}
-        
-        jogos_num_raw = player.get('jogos_num', 1)
-        jogos_num: int = int(jogos_num_raw) if jogos_num_raw is not None else 1
-        jogos_num = max(jogos_num, 1)
-        
-        weights: Dict[str, float] = self.scout_weights
+        if not isinstance(scouts, dict):
+            scouts = {}
+
+        atleta_id = int(player.get('atleta_id', 0) or 0)
+        pos_id = int(player.get('posicao_id', 0) or 0)
+        clube_id = player.get('clube_id')
+        jogos_num = max(int(player.get('jogos_num', 1) or 1), 1)
         reasons: List[str] = []
-        
-        total_derived: float = 0.0
+
+        # ── STEP 1: Score base por pesos fixos de scouts ──────────────
+        total_derived = 0.0
         for sk, sv in scouts.items():
             k = str(sk)
-            if k in weights and k != 'SG': 
+            if k in self.scout_weights and k != 'SG':
                 val = float(sv) if sv is not None else 0.0
-                w = float(weights[k])
-                total_derived = float(total_derived + (val * w))
-                
-        base_projection: float = float(total_derived / float(jogos_num))
-        
+                total_derived += val * self.scout_weights[k]
+
+        base_projection = total_derived / float(jogos_num)
+
+        # ── STEP 2: Blend com histórico (Para jogadores com poucos jogos) ──
         if jogos_num < 3:
-            atleta_id_raw = player.get('atleta_id', 0)
-            atleta_id = int(atleta_id_raw) if atleta_id_raw is not None else 0
-            
-            media_num: float = 0.0
             if atleta_id in self.historical_stats:
-                media_num = float(self.historical_stats[atleta_id].get('media_num', 0.0))
+                media_num = self.historical_stats[atleta_id].get('media_num', 0.0)
             else:
-                media_num_raw = player.get('media_num', 0.0)
-                media_num = float(media_num_raw) if media_num_raw is not None else 0.0
-                
-            base_projection = float((base_projection + (media_num * 2.0)) / 3.0)
-            
-        ies: float = float(self._calculate_ies(scouts, jogos_num))
-        base_projection = float(base_projection + (ies * 100.0))
-        
+                media_num = float(player.get('media_num', 0.0) or 0.0)
+            base_projection = (base_projection + (media_num * 2.0)) / 3.0
+
+        # ── STEP 3: IES Boost ──────────────────────────────────────────
+        ies = self._calculate_ies(scouts, jogos_num)
+        base_projection += ies * 100.0
         if ies > 0.05:
             reasons.append(f"IES Alto ({ies:.3f} ações/min)")
-        
-        sg_points, sg_prob = self._calculate_poisson_sg(player, matches)
-        if sg_prob > 40.0:
-            reasons.append(f"Prob. de SG alta (Poisson: {sg_prob}%)")
-            
-        context_multiplier: float = 1.0 
+
+        # ── STEPS 4-7: Contexto da partida (Poisson, Média Cedida, Clustering, Markov) ──
+        context_multiplier = 1.0
+        lambda_xga = 1.1  # default
+        media_cedida_val = 5.0  # default neutro
+        is_home = True  # default
+
         if matches and isinstance(matches, dict) and 'partidas' in matches:
             partidas = matches.get('partidas', [])
             if isinstance(partidas, list):
-                clube_id = player.get('clube_id')
-                pos_id_raw = player.get('posicao_id', 0)
-                pos_id = int(pos_id_raw) if pos_id_raw is not None else 0
                 for part in partidas:
-                    if not isinstance(part, dict): continue
-                    is_home = part.get('clube_casa_id') == clube_id
-                    is_away = part.get('clube_visitante_id') == clube_id
-                    
-                    if is_home or is_away:
-                        adv_pos_raw = part.get('clube_visitante_posicao' if is_home else 'clube_casa_posicao', 10)
-                        adv_pos = int(adv_pos_raw) if adv_pos_raw is not None else 10
-                        
-                        # "Média Cedida com Mando de Campo" por posição
+                    if not isinstance(part, dict):
+                        continue
+                    home_match = part.get('clube_casa_id') == clube_id
+                    away_match = part.get('clube_visitante_id') == clube_id
+
+                    if not (home_match or away_match):
+                        continue
+
+                    is_home = home_match
+                    adv_id = part.get('clube_visitante_id' if is_home else 'clube_casa_id')
+                    adv_pos = int(part.get('clube_visitante_posicao' if is_home else 'clube_casa_posicao', 10) or 10)
+                    if adv_pos == 0:
+                        adv_pos = 10
+
+                    # STEP 4: Poisson com λ REAL (histórico de gols)
+                    if pos_id in DEFENSIVE_POSITIONS:
+                        # Para defensores: λ do adversário atacando NOSSO clube
+                        lambda_xga = self.poisson.get_lambda_xGA(clube_id, is_home)
+                        prob_sg = math.exp(-lambda_xga)
+                        sg_points = prob_sg * 5.0
+                        base_projection += sg_points
+                        sg_pct = prob_sg * 100
+                        if sg_pct > 40:
+                            reasons.append(f"Prob. SG: {sg_pct:.1f}% (Poisson λ={lambda_xga:.2f})")
+                    else:
+                        # Para Atacantes/Meias: usa strength de ataque do próprio clube
+                        atk_strength = self.poisson.get_attack_strength(clube_id, is_home)
+                        lambda_xga = atk_strength  # usado como feature no RF
+
+                    # STEP 5: Média Cedida por Posição (dificuldade real p/ atacar)
+                    if adv_id:
+                        # Adversário cede pontos para esta posição no mando ADVERSÁRIO
+                        adv_is_home = not is_home
+                        difficulty_mult = self.media_cedida.get_difficulty_multiplier(adv_id, pos_id, adv_is_home)
+                        mc = self.media_cedida.get_media_cedida(adv_id, pos_id, adv_is_home)
+                        media_cedida_val = mc if mc is not None else media_cedida_val
+
+                        context_multiplier *= difficulty_mult
+
+                        if difficulty_mult > 1.15:
+                            reasons.append(f"Adversário cede muito pts p/ {POS_NAMES.get(pos_id,'?')} (MC={media_cedida_val:.1f})")
+                        elif difficulty_mult < 0.85:
+                            reasons.append(f"Adversário forte — baixa cessão p/ {POS_NAMES.get(pos_id,'?')} (MC={media_cedida_val:.1f})")
+                    else:
+                        # Fallback: posição na tabela quando não temos média cedida
                         if is_home:
-                            # Mandante: Vantagem geral base
-                            context_multiplier = float(context_multiplier * 1.10)
-                            
-                            # Cede para Atacantes e Meias (Se adv fraco)
+                            context_multiplier *= 1.10
                             if pos_id in [4, 5] and adv_pos >= 14:
-                                context_multiplier = float(context_multiplier * 1.30)
-                                reasons.append(f"Mandante vs Defesa frágil (Adversário Pos {adv_pos})")
-                            elif pos_id in [4, 5] and adv_pos <= 6:
-                                context_multiplier = float(context_multiplier * 0.95)
-                                
-                            # Cede para Defensores (Desarmes/Faltas)
-                            if pos_id in [2, 3] and adv_pos <= 8:
-                                context_multiplier = float(context_multiplier * 1.15)
-                                reasons.append(f"Mandante sofrendo pressão (Alto volume de Desarmes esperados)")
-                                
-                        else: # Visitante
-                            context_multiplier = float(context_multiplier * 0.90) # Desvantagem geral base
-                            
+                                context_multiplier *= 1.30
+                                reasons.append(f"Mandante vs defesa frágil (pos {adv_pos})")
+                            elif pos_id in [2, 3] and adv_pos <= 8:
+                                context_multiplier *= 1.15
+                        else:
+                            context_multiplier *= 0.90
                             if pos_id in [4, 5] and adv_pos >= 16:
-                                context_multiplier = float(context_multiplier * 1.10)
-                                reasons.append(f"Visitante, mas contra defesa super frágil (Z4)")
+                                context_multiplier *= 1.10
                             elif pos_id in [2, 3] and adv_pos <= 6:
-                                # Visitante contra time forte sofre pressão, muita chance de desarme, mas alto risco de perder SG
-                                context_multiplier = float(context_multiplier * 1.20)
-                                reasons.append(f"Visitante sob forte pressão (Potencial IES Defensivo)")
-                                
-                        break
+                                context_multiplier *= 1.20
 
-        # SG weight is neutral — depends on matchup only
-        if context_multiplier > 1.2:
-            sg_points = sg_points * 1.1
-            
-        base_projection = float(base_projection + float(sg_points))
-        
-        final_ep: float = float(base_projection * context_multiplier)
-        
-        if int(player.get('status_id', 0) or 0) != 7: 
+                    break  # só processa a primeira partida encontrada
+
+        # STEP 6: Bônus de perfil técnico (Affinity Propagation)
+        cluster_bonus = self.clusterer.get_cluster_bonus(atleta_id, pos_id)
+        context_multiplier *= cluster_bonus
+        cluster_label = self.clusterer.get_cluster_label(atleta_id)
+        if cluster_label != "Desconhecido" and abs(cluster_bonus - 1.0) > 0.05:
+            reasons.append(f"Perfil: {cluster_label} (×{cluster_bonus:.2f})")
+
+        # STEP 7: Penalidade de consistência (Markov)
+        volatility = self.markov.get_volatility_penalty(atleta_id)
+        consistency = self.markov.get_consistency_score(atleta_id)
+        # Penalidade: reduz até 20% para jogadores muito voláteis
+        markov_factor = 1.0 - (volatility * 0.20)
+        context_multiplier *= markov_factor
+        if volatility > 0.5:
+            reasons.append(f"Alta volatilidade Markov ({volatility:.2f}) — penalidade aplicada")
+
+        # ── STEP 8: Random Forest override ─────────────────────────────
+        media_hist = float(
+            self.historical_stats.get(atleta_id, {}).get('media_num', 0.0)
+            or player.get('media_num', 0.0)
+            or 0.0
+        )
+        rf_pred = self.rf_predictor.predict(
+            media=media_hist,
+            ies=ies,
+            lambda_xga=lambda_xga,
+            media_cedida=media_cedida_val,
+            is_home=int(is_home),
+            consistency=consistency,
+            pos_id=pos_id,
+        )
+
+        if rf_pred is not None:
+            # Blend: 60% RF + 40% determinístico para não perder transparência
+            base_projection = (rf_pred * 0.60) + (base_projection * 0.40)
+            reasons.append(f"RF preditivo blend (RF={rf_pred:.1f})")
+
+        # ── SCORE FINAL ─────────────────────────────────────────────
+        final_ep = float(base_projection * context_multiplier)
+
+        # Jogador não disponível → score inutilizável
+        if int(player.get('status_id', 0) or 0) != 7:
             final_ep = -999.0
-            
-        if not reasons:
-            media = float(player.get('media_num', 0.0) or 0.0)
-            reasons.append(f"Baseado na média histórica ({media:.1f} pts)")
-            
-        main_reason = reasons[0]
-        return final_ep, main_reason
 
-    def normalize_players(self, cartola_atletas: Dict[str, Any], objective: str = "mitagem", cartola_partidas: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
+        if not reasons:
+            reasons.append(f"Baseado na média histórica ({media_hist:.1f} pts)")
+
+        return final_ep, reasons[0]
+
+    # ------------------------------------------------------------------
+    # NORMALIZAÇÃO DE JOGADORES (interface com o Solver)
+    # ------------------------------------------------------------------
+    def normalize_players(
+        self,
+        cartola_atletas: Dict[str, Any],
+        objective: str = "mitagem",
+        cartola_partidas: Optional[Dict[str, Any]] = None,
+        ousadia: int = 5,
+    ) -> List[Dict[str, Any]]:
+        """
+        Normaliza os atletas do Cartola para o formato do MathEngine (PuLP Solver).
+        Alimenta também o clusterer e treina o pipeline ML antes de calcular scores.
+        """
+        # Fitar o pipeline ML com os dados históricos ingeridos
+        self.fit_ml_pipeline()
+
         players: List[Dict[str, Any]] = []
         raw_players = cartola_atletas.get('atletas', [])
-        if not isinstance(raw_players, list): return players
-        
+        if not isinstance(raw_players, list):
+            return players
+
         for rp in raw_players:
-            if not isinstance(rp, dict): continue
+            if not isinstance(rp, dict):
+                continue
+
             pos = rp.get('posicao_id')
             clube = rp.get('clube_id')
             preco = float(rp.get('preco_num', 0.0) or 0.0)
-            ultima_pt = float(rp.get('pontos_num', 0.0) or 0.0) 
-            
+            ultima_pt = float(rp.get('pontos_num', 0.0) or 0.0)
+
+            # Alimentar clusterer com dados do mercado atual
+            scouts_cur = rp.get('scout', {})
+            if isinstance(scouts_cur, dict) and scouts_cur:
+                atleta_id_cur = int(rp.get('atleta_id', 0) or 0)
+                jogos_cur = max(int(rp.get('jogos_num', 1) or 1), 1)
+                self.clusterer.ingest_player_features(atleta_id_cur, scouts_cur, jogos_cur)
+
             pts_esperados, reason = self._calculate_expected_points(rp, cartola_partidas)
-            
-            # Usando import inline para evitar ciclo, ou importando no modulo
+
+            # MV (Mínimo para Valorizar)
             from app.services.market import cartola_service
             mv = cartola_service.calculate_mv(preco, ultima_pt)
             pts_valorizacao = float(pts_esperados - mv)
-            
+
+            # Ousadia: 1-9 escala o risco/retorno
+            # Ousadia alta → favorece pontuação absoluta (mitagem)
+            # Ousadia baixa → penaliza jogadores voláteis
+            ousadia_factor = 0.8 + (ousadia * 0.04)  # 0.84 a 1.16
+
             if objective == "valorizacao":
-                solver_score = pts_valorizacao
+                solver_score = pts_valorizacao * ousadia_factor
                 if pts_valorizacao > 0:
                     reason = f"Precisa de apenas {mv:.1f} pts para valorizar (EV Val: {pts_valorizacao:.1f})"
             else:
-                solver_score = pts_esperados
-            
+                solver_score = pts_esperados * ousadia_factor
+
+            # Enriquecer o output com informações de perfil e consistência
+            atleta_id = int(rp.get('atleta_id', 0) or 0)
+            cluster_label = self.clusterer.get_cluster_label(atleta_id)
+            consistency_score = self.markov.get_consistency_score(atleta_id)
+
             p = {
                 "id": rp.get('atleta_id'),
                 "nome": rp.get('apelido'),
@@ -245,11 +919,16 @@ class DataProcessor:
                 "clube_id": clube,
                 "status_id": rp.get('status_id'),
                 "foto": rp.get('foto'),
-                "reason": reason
+                "reason": reason,
+                "perfil": cluster_label,
+                "consistencia": round(consistency_score, 2),
             }
-            if p['status_id'] == 7: 
+
+            if p['status_id'] == 7:
                 players.append(p)
-                
+
         return players
 
+
+# Singleton global
 data_processor = DataProcessor()

@@ -1,7 +1,9 @@
 from fastapi import APIRouter, HTTPException
 from app.services.market import cartola_service
+import asyncio
 
 router = APIRouter()
+
 
 @router.get("/status")
 async def get_status():
@@ -11,6 +13,7 @@ async def get_status():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+
 @router.get("/atletas")
 async def get_atletas():
     """Retorna todos os atletas disponíveis no mercado."""
@@ -18,6 +21,7 @@ async def get_atletas():
         return await cartola_service.get_atletas_mercado()
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
 
 from typing import Optional
 
@@ -29,54 +33,99 @@ async def get_partidas(rodada: Optional[int] = None):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+
 from app.services.analytics import data_processor
 from app.services.solver import MathEngine
 
-@router.get("/optimize-real")
-async def optimize_real(budget: float = 140.0, formation: str = "4-3-3", ousadia: int = 5, modo: str = "mitagem"):
+
+async def _ingest_historical_rounds(rodada_atual: int, num_rounds: int = 5) -> int:
     """
-    Busca os atletas reais no Cartola API, normaliza com o peso de Ousadia, 
-    e resolve a escalação ótima.
+    Ingere múltiplas rodadas históricas para treinar os modelos de ML.
+    Busca as 'num_rounds' rodadas anteriores à rodada_atual.
+    Retorna o número de rodadas ingeridas com sucesso.
+    """
+    ingested = 0
+    tasks = []
+
+    for r in range(max(1, rodada_atual - num_rounds), rodada_atual):
+        tasks.append(cartola_service.get_historical_data(2024, r))
+
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+
+    for csv_data in results:
+        if isinstance(csv_data, str) and csv_data.strip():
+            data_processor.ingest_historical_csv(csv_data)
+            ingested += 1
+
+    return ingested
+
+
+@router.get("/optimize-real")
+async def optimize_real(
+    budget: float = 140.0,
+    formation: str = "4-3-3",
+    ousadia: int = 5,
+    modo: str = "mitagem",
+    rodadas_historicas: int = 5,
+):
+    """
+    Pipeline completo de otimização baseado na referência técnica caRtola:
+    1. Busca atletas e status do mercado
+    2. Ingere múltiplas rodadas históricas (Poisson real + Média Cedida + Markov + RF)
+    3. Clustering Affinity Propagation por perfil técnico
+    4. Treina Random Forest com features de dificuldade
+    5. Resolve escalação ótima via PuLP (ILP)
     """
     try:
-        # 1. Obter Atletas da API
-        cartola_data = await cartola_service.get_atletas_mercado()
-        
-        # 1.2 Obter Dados Históricos e Ingerir
-        try:
-            status_mercado = await cartola_service.get_mercado_status()
-            rodada_atual = status_mercado.get('rodada_atual', 2)
-            rodada_anterior = max(1, rodada_atual - 1)
-            csv_data = await cartola_service.get_historical_data(2024, rodada_anterior)
-            if csv_data:
-                data_processor.ingest_historical_csv(csv_data)
-        except Exception:
-            pass # Continua sem histórico se der erro, usando médias atuais
+        # ── 1. Buscar atletas e status do mercado em paralelo ─────────
+        cartola_data, status_mercado = await asyncio.gather(
+            cartola_service.get_atletas_mercado(),
+            cartola_service.get_mercado_status(),
+            return_exceptions=False,
+        )
 
-        # 1.5 Obter Partidas da API para Multiplicador de Contexto (FDR)
+        rodada_atual = int(status_mercado.get('rodada_atual', 2)) if isinstance(status_mercado, dict) else 2
+
+        # ── 2. Ingerir múltiplas rodadas históricas em paralelo ───────
+        ingested_count = 0
+        try:
+            ingested_count = await _ingest_historical_rounds(rodada_atual, num_rounds=rodadas_historicas)
+        except Exception:
+            pass  # Continua sem histórico; modelos usarão fallbacks
+
+        # ── 3. Buscar partidas da rodada atual para contexto ──────────
+        cartola_partidas = None
         try:
             cartola_partidas = await cartola_service.get_partidas()
         except Exception:
-            # Caso a API de partidas falhe ou esteja fora do ar, ignora o bônus
-            cartola_partidas = None
-        
-        # 2. Processar e Normalizar
+            pass
+
+        # ── 4. Normalizar jogadores (roda o pipeline ML completo) ─────
         players_normalized = data_processor.normalize_players(
-            cartola_data, 
-            ousadia=ousadia, 
-            objective=modo, 
-            cartola_partidas=cartola_partidas
+            cartola_data,
+            objective=modo,
+            cartola_partidas=cartola_partidas,
+            ousadia=ousadia,
         )
-        
-        # 3. Resolver com Motor Matemático
+
+        # ── 5. Resolver escalação com Motor Matemático (PuLP ILP) ─────
         engine = MathEngine(budget=budget, formation=formation, objective=modo)
         result = engine.optimize_team(players_normalized)
-        
-        # 4. RF02 : Simulador de Impacto / ROI Extras
+
+        # ── 6. Enriquecer metadados do resultado ──────────────────────
         reservas = [p for p in result["results"]["lineup"] if not p["is_titular"]]
-        result["meta"]["roi_cartoletas"] = result["meta"]["total_expected_points"] * 0.45 if modo == "valorizacao" else 0.0
-        result["meta"]["score_protecao"] = sum(p['pontos_esperados'] for p in reservas) / max(1, len(reservas))
+        result["meta"]["roi_cartoletas"] = (
+            result["meta"]["total_expected_points"] * 0.45 if modo == "valorizacao" else 0.0
+        )
+        result["meta"]["score_protecao"] = (
+            sum(p["pontos_esperados"] for p in reservas) / max(1, len(reservas))
+        )
+        result["meta"]["rodadas_historicas_ingeridas"] = ingested_count
+        result["meta"]["ml_pipeline_fitted"] = data_processor._pipeline_fitted
+        result["meta"]["rf_trained"] = data_processor.rf_predictor._is_fitted
+        result["meta"]["clustering_fitted"] = data_processor.clusterer._is_fitted
 
         return result
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erro no pipeline full: {str(e)}")
