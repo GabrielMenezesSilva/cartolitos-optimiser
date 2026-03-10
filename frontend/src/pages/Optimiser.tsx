@@ -12,7 +12,6 @@ type Toast = { id: number; type: 'success' | 'error'; message: string };
 export default function Optimiser() {
   const [loading, setLoading] = useState(false);
   const [budget, setBudget] = useState(140);
-  const [ousadia, setOusadia] = useState(5);
   const [modo, setModo] = useState('mitagem');
   const [result, setResult] = useState<any>(null);
   const [panicMode, setPanicMode] = useState(false);
@@ -33,7 +32,7 @@ export default function Optimiser() {
     setLoading(true);
     setResult(null);
     try {
-      const data = await optimizeLineup(budget, ousadia, modo, token);
+      const data = await optimizeLineup(budget, modo, token);
       setResult(data);
     } catch (e: any) {
       console.error('Error optimizing:', e);
@@ -77,7 +76,7 @@ export default function Optimiser() {
     }
     return () => { if (interval) clearInterval(interval); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [panicMode, budget, ousadia, modo, token]);
+  }, [panicMode, budget, modo, token]);
 
   return (
     <div className="flex flex-col h-full w-full">
@@ -209,29 +208,6 @@ export default function Optimiser() {
                   />
                 </div>
 
-                {/* Ousadia */}
-                <div>
-                  <div className="flex justify-between items-end mb-3">
-                    <label className="text-xs font-bold text-slate-500 uppercase tracking-widest">
-                      Nível de Ousadia
-                    </label>
-                    <div className="bg-slate-900 border border-slate-800 px-3 py-1 rounded-lg">
-                      <span className="text-lg font-mono font-bold text-indigo-400">{ousadia}<span className="text-xs text-slate-500 font-sans">/10</span></span>
-                    </div>
-                  </div>
-                  <input
-                    type="range"
-                    min="1"
-                    max="10"
-                    value={ousadia}
-                    onChange={(e) => setOusadia(Number(e.target.value))}
-                    className="w-full accent-indigo-500 block h-1.5 bg-slate-800 rounded-full appearance-none cursor-pointer hover:bg-slate-700 transition-colors"
-                  />
-                  <div className="flex justify-between text-[10px] text-slate-500 mt-2 font-medium uppercase tracking-wider">
-                    <span>Conservador</span>
-                    <span>Arrojado</span>
-                  </div>
-                </div>
 
                 <motion.button
                   whileHover={{ scale: 1.02 }}

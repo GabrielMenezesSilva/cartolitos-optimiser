@@ -11,20 +11,12 @@ class DataProcessor:
     
     def __init__(self) -> None:
         self.historical_stats: Dict[int, Dict[str, float]] = {}
-        # Definição de pesos originais híbridos (Média + IES/Poisson vão incrementar isso)
-        self.strategy_weights = {
-            'SEGURO': {
-                'DS': 1.5, 'FC': -0.3, 'FS': 1.2, 'PI': -0.1, 'FD': 1.2, 
-                'FF': 0.8, 'DE': 1.3, 'DP': 7.0, 'GS': -1.0, 'G': 0.8,
-                'A': 0.9, 'SG': 1.1, 'xG': 0.5, 'xA': 0.5, 'FT': 3.0,
-                'CV': -3.0, 'CA': -1.0, 'PP': -4.0, 'GC': -3.0,
-            },
-            'OUSADO': {
-                'DS': 0.8, 'FC': -0.3, 'FS': 0.7, 'PI': -0.1, 'FD': 1.2,
-                'FF': 0.8, 'DE': 1.0, 'DP': 7.0, 'GS': -1.0, 'G': 2.0,
-                'A': 1.8, 'SG': 1.4, 'xG': 1.5, 'xA': 1.5, 'FT': 3.0,
-                'CV': -3.0, 'CA': -1.0, 'PP': -4.0, 'GC': -3.0,
-            }
+        # Pesos de scouts fixos e balanceados
+        self.scout_weights: Dict[str, float] = {
+            'DS': 1.2, 'FC': -0.3, 'FS': 1.0, 'PI': -0.1, 'FD': 1.2,
+            'FF': 0.8, 'DE': 1.2, 'DP': 7.0, 'GS': -1.0, 'G': 1.5,
+            'A': 1.4, 'SG': 1.2, 'xG': 1.0, 'xA': 1.0, 'FT': 3.0,
+            'CV': -3.0, 'CA': -1.0, 'PP': -4.0, 'GC': -3.0,
         }
 
     def ingest_historical_csv(self, csv_text: str) -> None:
@@ -45,18 +37,6 @@ class DataProcessor:
                 }
             except Exception:
                 pass
-
-    def _get_interpolated_weights(self, ousadia: int) -> Dict[str, float]:
-        if ousadia <= 4: return self.strategy_weights['SEGURO']
-        elif ousadia >= 7: return self.strategy_weights['OUSADO']
-        
-        ratio = (ousadia - 4) / 3.0
-        weights: Dict[str, float] = {}
-        for key in self.strategy_weights['SEGURO'].keys():
-            w_seguro = self.strategy_weights['SEGURO'][key]
-            w_ousado = self.strategy_weights['OUSADO'][key]
-            weights[key] = w_seguro + (w_ousado - w_seguro) * ratio
-        return weights
 
     def _calculate_ies(self, scouts: Dict[str, Any], jogos_num: int) -> float:
         """
@@ -116,7 +96,7 @@ class DataProcessor:
         sg_points = prob_sg * 5.0
         return float(sg_points), float(f"{prob_sg * 100:.1f}")
 
-    def _calculate_expected_points(self, player: Dict[str, Any], ousadia: int, matches: Optional[Dict[str, Any]] = None) -> tuple[float, str]:
+    def _calculate_expected_points(self, player: Dict[str, Any], matches: Optional[Dict[str, Any]] = None) -> tuple[float, str]:
         """
         Calcula os 'pontos_esperados' usando IES, Poisson para SG e scouts normais.
         Retorna (Expected Points, Reason).
@@ -128,7 +108,7 @@ class DataProcessor:
         jogos_num: int = int(jogos_num_raw) if jogos_num_raw is not None else 1
         jogos_num = max(jogos_num, 1)
         
-        weights: Dict[str, float] = self._get_interpolated_weights(ousadia)
+        weights: Dict[str, float] = self.scout_weights
         reasons: List[str] = []
         
         total_derived: float = 0.0
@@ -210,12 +190,9 @@ class DataProcessor:
                                 
                         break
 
-        # Weight SG according to Ousadia
-        # Ousadia baixa (Seguro) = Confia mais em média e IES
-        # Ousadia alta (Ousado) = Confia mais em SG e confrontos favoráveis
-        if ousadia > 6:
-            sg_points = sg_points * 1.2
-            context_multiplier = context_multiplier * 1.1
+        # SG weight is neutral — depends on matchup only
+        if context_multiplier > 1.2:
+            sg_points = sg_points * 1.1
             
         base_projection = float(base_projection + float(sg_points))
         
@@ -231,7 +208,7 @@ class DataProcessor:
         main_reason = reasons[0]
         return final_ep, main_reason
 
-    def normalize_players(self, cartola_atletas: Dict[str, Any], ousadia: int = 5, objective: str = "mitagem", cartola_partidas: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
+    def normalize_players(self, cartola_atletas: Dict[str, Any], objective: str = "mitagem", cartola_partidas: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
         players: List[Dict[str, Any]] = []
         raw_players = cartola_atletas.get('atletas', [])
         if not isinstance(raw_players, list): return players
@@ -243,7 +220,7 @@ class DataProcessor:
             preco = float(rp.get('preco_num', 0.0) or 0.0)
             ultima_pt = float(rp.get('pontos_num', 0.0) or 0.0) 
             
-            pts_esperados, reason = self._calculate_expected_points(rp, ousadia, cartola_partidas)
+            pts_esperados, reason = self._calculate_expected_points(rp, cartola_partidas)
             
             # Usando import inline para evitar ciclo, ou importando no modulo
             from app.services.market import cartola_service

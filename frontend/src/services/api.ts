@@ -36,14 +36,13 @@ export const saveLineup = async (token: string, roundId: number, expectedPoints:
     return response.data;
 }
 
-export const optimizeLineup = async (budget: number, ousadia: number, modo: string, token: string | null = null) => {
+export const optimizeLineup = async (budget: number, modo: string, token: string | null = null) => {
     const headers = token ? { Authorization: `Bearer ${token}` } : {};
     const response = await api.get('/api/v1/cartola/optimize-real', {
         params: {
             budget,
-            ousadia,
             modo,
-            formation: '4-3-3' // Hardcoded for now, can be state later
+            formation: '4-3-3'
         },
         headers
     });
