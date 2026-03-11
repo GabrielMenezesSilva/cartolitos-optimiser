@@ -101,6 +101,7 @@ class MathEngine:
                     "status_id": p.get('status_id'),
                     "foto": p.get('foto'),
                     "clube_id": p.get('clube_id'),
+                    "clube_slug": p.get('clube_slug', '??'),
                     "is_titular": is_titular,
                     "is_capitao": bool(is_captain),
                     "reason": p.get('reason', 'N/A'),

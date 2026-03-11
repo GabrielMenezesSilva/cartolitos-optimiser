@@ -219,7 +219,7 @@ export default function Optimiser() {
                   {loading ? (
                     <span className="flex items-center gap-2">
                       <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                      Processando Matriz...
+                      Gerando...
                     </span>
                   ) : (
                     <><Cpu className="w-5 h-5" /> Gerar Escalação Ideal</>
@@ -270,7 +270,7 @@ export default function Optimiser() {
                   <div className="w-16 h-16 rounded-full border border-dashed border-slate-600 flex items-center justify-center">
                     <TrendingUp className="w-6 h-6 text-slate-500" />
                   </div>
-                  <p className="text-sm font-medium text-slate-400 max-w-[200px]">Execute a simulação para visualizar as justificativas estatísticas.</p>
+                  <p className="text-sm font-medium text-slate-400 max-w-[200px]">Gere uma escalação para visualizar as justificativas e as previsões.</p>
                 </div>
               ) : (
                 <motion.div
@@ -281,21 +281,46 @@ export default function Optimiser() {
                   {/* Totals */}
                   <div className="grid grid-cols-2 gap-4">
                     <div className="bg-slate-900/60 border border-slate-800/80 rounded-2xl p-4 flex flex-col items-center justify-center text-center shadow-lg shadow-black/20">
-                      <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mb-1.5">Custo Total</p>
-                      <h3 className="text-2xl font-mono font-black text-white">C$ {(result.meta?.total_cost ?? 0).toFixed(1)}</h3>
+                      <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mb-1.5">Preço do Time</p>
+                      <h3 className="text-xl sm:text-2xl font-mono font-black text-white">C$ {(result.meta?.total_cost ?? 0).toFixed(1)}</h3>
+                      {result.meta?.expected_valorization && (
+                        <p className="text-[10px] mt-1 font-medium text-amber-500">+ C$ {result.meta.expected_valorization.toFixed(2)} proj.</p>
+                      )}
                     </div>
                     <div className="bg-emerald-950/20 border border-emerald-500/20 rounded-2xl p-4 flex flex-col items-center justify-center text-center shadow-lg shadow-emerald-900/10">
                       <p className="text-[10px] text-emerald-500/80 font-bold uppercase tracking-widest mb-1.5">Pontuação Esperada</p>
-                      <h3 className="text-2xl font-mono font-black text-emerald-400">{(result.meta?.total_expected_points ?? 0).toFixed(1)}</h3>
+                      <h3 className="text-xl sm:text-2xl font-mono font-black text-emerald-400">{(result.meta?.total_expected_points ?? 0).toFixed(1)}</h3>
+                      <p className="text-[10px] mt-1 font-medium text-emerald-500/60">pontos proj.</p>
                     </div>
                   </div>
 
                   {/* Legend */}
                   <div className="bg-slate-900/40 p-3 mt-1 mb-2 flex flex-col gap-1 rounded-xl border border-slate-800">
                     <p className="text-[10px] text-slate-400 leading-relaxed">
-                      <strong className="text-slate-200">Pontuação Esperada:</strong> Baseada no histórico do jogador, mando de campo e força do adversário. Considera favoritismo e chance de não tomar gols.
+                      <strong className="text-slate-200">Pontuação Esperada:</strong> Total de pontos prováveis baseado na IA, Mando de Campo e Zebras.
+                    </p>
+                    <p className="text-[10px] text-slate-400 leading-relaxed">
+                      <strong className="text-slate-200">Projeção (+C$):</strong> Estimativa de ganho de cartoletas (patrimônio) na rodada.
                     </p>
                   </div>
+
+                  {/* Top SGs */}
+                  {result.meta?.top_sgs && result.meta.top_sgs.length > 0 && (
+                    <div className="bg-gradient-to-r from-slate-900/80 to-slate-900/40 border border-slate-800 p-3 rounded-xl">
+                      <h4 className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-2">Melhores Defesas (SG)</h4>
+                      <div className="grid grid-cols-2 gap-2">
+                        {result.meta.top_sgs.slice(0, 4).map((sg: any, idx: number) => (
+                          <div key={idx} className="flex items-center gap-2 bg-black/40 p-2 rounded-lg border border-white/5">
+                            {sg.escudo && <img src={sg.escudo} alt={sg.nome} className="w-5 h-5 object-contain" />}
+                            <div className="flex flex-col">
+                              <span className="text-[10px] font-bold text-white leading-none mb-0.5">{sg.nome}</span>
+                              <span className="text-[8px] text-emerald-400 font-mono">{(sg.prob_sg * 100).toFixed(1)}% de chance</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
 
                   {/* Highlights */}
                   <div className="flex-1 flex flex-col gap-3 min-h-0">

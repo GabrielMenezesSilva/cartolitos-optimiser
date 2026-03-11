@@ -41,6 +41,25 @@ POS_NAMES = {1: "Goleiro", 2: "Lateral", 3: "Zagueiro", 4: "Meia", 5: "Atacante"
 # Posições defensivas para análise de SG
 DEFENSIVE_POSITIONS = {1, 2, 3}
 
+# ──────────────────────────────────────────────────────────────
+# CONSTANTES DE DOMÍNIO
+# ──────────────────────────────────────────────────────────────
+ESTADOS_CLUBES = {
+    2305: 'SP', 262: 'RJ', 263: 'RJ', 264: 'SP', 265: 'BA', 
+    266: 'RJ', 267: 'RJ', 275: 'SP', 276: 'SP', 277: 'SP', 
+    280: 'SP', 282: 'MG', 283: 'MG', 284: 'RS', 285: 'RS', 
+    287: 'BA', 293: 'PR', 294: 'PR', 315: 'SC', 364: 'PA'
+}
+
+def get_tier(posicao: int) -> int:
+    """Classifica a força do time em Tiers (1=Elite, 5=Rebaixamento)."""
+    if posicao <= 4: return 1
+    if posicao <= 8: return 2
+    if posicao <= 12: return 3
+    if posicao <= 16: return 4
+    return 5
+
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 # 2. MÓDULO: REGRESSÃO DE POISSON REAL (λ baseado em histórico de gols)
@@ -757,47 +776,69 @@ class DataProcessor:
                     if my_pos == 0: my_pos = 10
 
                     # ────────────────────────────────────────────────────────
-                    # NOVO: Momentum (Aproveitamento) e Favoritismo (Match Difficulty)
+                    # NOVO: Momentum com Decaimento e Favoritismo usando Tiers
                     # ────────────────────────────────────────────────────────
                     aprov_meu = part.get('aproveitamento_mandante' if is_home else 'aproveitamento_visitante', [])
                     aprov_adv = part.get('aproveitamento_visitante' if is_home else 'aproveitamento_mandante', [])
                     
                     if isinstance(aprov_meu, list) and isinstance(aprov_adv, list):
-                        vitorias_minhas = aprov_meu.count('v')
-                        derrotas_minhas = aprov_meu.count('d')
-                        vitorias_adv = aprov_adv.count('v')
-                        derrotas_adv = aprov_adv.count('d')
-                        
-                        momentum_diff = (vitorias_minhas - derrotas_minhas) - (vitorias_adv - derrotas_adv)
-                        context_multiplier *= max(0.80, min(1.20, 1.0 + (momentum_diff * 0.03)))
+                        def calcula_momentum(aprov_list):
+                            score = 0.0
+                            valid_list = [r for r in aprov_list if r in ('v', 'e', 'd')]
+                            n = len(valid_list)
+                            for i, res in enumerate(valid_list):
+                                weight = 1.0 - ((n - 1 - i) * 0.2) # Decai 20% a cada jogo p/ trás
+                                if res == 'v': score += 1.0 * weight
+                                elif res == 'e': score += 0.4 * weight
+                                elif res == 'd': score -= 0.5 * weight
+                            return score
 
-                    pos_diff = my_pos - adv_pos # Positivo: o meu time está Pior na tabela
-                    
-                    if pos_diff >= 5: # Sou Zebra
-                        underdog_penalty = max(0.35, 1.0 - (pos_diff * 0.04))
-                        if not is_home:
-                            underdog_penalty *= 0.80 # Zebra jogando fora = reduz mais ainda
+                        score_meu = calcula_momentum(aprov_meu)
+                        score_adv = calcula_momentum(aprov_adv)
+                        
+                        momentum_diff = score_meu - score_adv
+                        context_multiplier *= max(0.80, min(1.20, 1.0 + (momentum_diff * 0.05)))
+
+                    # ────────────────────────────────────────────────────────
+                    # Clássicos, Tiers e Probabilidade SG Cruzada
+                    # ────────────────────────────────────────────────────────
+                    my_uf = ESTADOS_CLUBES.get(clube_id, 'MY')
+                    adv_uf = ESTADOS_CLUBES.get(adv_id, 'ADV')
+                    is_derby = (my_uf == adv_uf)
+
+                    my_tier = get_tier(my_pos)
+                    adv_tier = get_tier(adv_pos)
+                    tier_diff = my_tier - adv_tier
+
+                    if is_derby:
+                        tier_diff = 0 # Anula discrepância extrema da tabela
+                        reasons.append("Derby (Clássico)")
+
+                    if tier_diff >= 2: # Zebra
+                        underdog_penalty = max(0.40, 1.0 - (tier_diff * 0.15))
+                        if not is_home: underdog_penalty *= 0.85
                         context_multiplier *= underdog_penalty
-                        reasons.append(f"Zebra (Pos {my_pos} vs {adv_pos}{' Fora' if not is_home else ''})")
-                    elif pos_diff <= -5: # Sou Favorito
-                        favorite_bonus = min(1.35, 1.0 + (abs(pos_diff) * 0.025))
-                        if is_home:
-                            favorite_bonus *= 1.10 # Favorito jogando em casa
+                        reasons.append(f"Zebra (T{my_tier} vs T{adv_tier}{' Fora' if not is_home else ''})")
+                    elif tier_diff <= -2: # Favorito
+                        favorite_bonus = min(1.30, 1.0 + (abs(tier_diff) * 0.08))
+                        if is_home: favorite_bonus *= 1.10
                         context_multiplier *= favorite_bonus
-                        reasons.append(f"Favorito (Pos {my_pos} vs {adv_pos}{' Casa' if is_home else ''})")
+                        reasons.append(f"Favorito (T{my_tier} vs T{adv_tier}{' Casa' if is_home else ''})")
 
-                    # STEP 4: Poisson com λ REAL (histórico de gols)
+                    # STEP 4: Poisson Cruzado com λ REAL e Força do Oponente
                     if pos_id in DEFENSIVE_POSITIONS:
-                        # Para defensores: λ do adversário atacando NOSSO clube
                         lambda_xga = self.poisson.get_lambda_xGA(clube_id, is_home)
-                        prob_sg = math.exp(-lambda_xga)
+                        adv_atk_strength = self.poisson.get_attack_strength(adv_id, not is_home) if adv_id else 1.1
                         
-                        # Ajuste fino da prob de SG baseado no favoritismo
-                        if pos_diff >= 5: # Zebra dificilmente segura SG
-                            prob_sg *= max(0.1, 1.0 - (pos_diff * 0.06))
-                            if not is_home: prob_sg *= 0.6
-                        elif pos_diff <= -5: # Favorito tem mais chance
-                            prob_sg = min(0.95, prob_sg * (1.0 + (abs(pos_diff) * 0.03)))
+                        # Multiplica lambda base pela força ofensiva do oponente
+                        lambda_adjusted = lambda_xga * (adv_atk_strength / 1.1)
+                        prob_sg = math.exp(-lambda_adjusted)
+                        
+                        if tier_diff >= 2: # Zebra dificilmente segura SG
+                            prob_sg *= max(0.15, 1.0 - (tier_diff * 0.20))
+                            if not is_home: prob_sg *= 0.7
+                        elif tier_diff <= -2: # Favorito tem mais chance
+                            prob_sg = min(0.95, prob_sg * (1.0 + (abs(tier_diff) * 0.10)))
                             if is_home: prob_sg *= 1.1
                             
                         prob_sg = min(0.95, prob_sg)
@@ -806,32 +847,34 @@ class DataProcessor:
                         
                         sg_pct = prob_sg * 100
                         if sg_pct > 40:
-                            reasons.append(f"Prob. SG alta: {sg_pct:.1f}%")
+                            reasons.append(f"SG: {sg_pct:.1f}%")
                     else:
-                        # Para Atacantes/Meias: usa strength de ataque do próprio clube
                         atk_strength = self.poisson.get_attack_strength(clube_id, is_home)
-                        lambda_xga = atk_strength  # usado como feature no RF
+                        adv_xga = self.poisson.get_lambda_xGA(adv_id, not is_home) if adv_id else 1.1
+                        lambda_xga = atk_strength * (adv_xga / 1.1)
+                        if lambda_xga > 1.5:
+                            reasons.append(f"Ataque ++ (λ={lambda_xga:.2f})")
 
-                    # STEP 5: Média Cedida por Posição (dificuldade real p/ atacar)
+                    # STEP 5: Média Cedida por Posição (Cruzada contra Tiers)
                     if adv_id:
-                        # Adversário cede pontos para esta posição no mando ADVERSÁRIO
                         adv_is_home = not is_home
                         difficulty_mult = self.media_cedida.get_difficulty_multiplier(adv_id, pos_id, adv_is_home)
                         mc = self.media_cedida.get_media_cedida(adv_id, pos_id, adv_is_home)
                         media_cedida_val = mc if mc is not None else media_cedida_val
 
-                        context_multiplier *= difficulty_mult
+                        # Ajusta dificuldade baseado no favoritismo. Favoritos furam mais defesas, zebras menos.
+                        diff_cross_weight = 1.0 - (tier_diff * 0.05)
+                        difficulty_adjusted = difficulty_mult * max(0.8, min(1.2, diff_cross_weight))
 
-                        if difficulty_mult > 1.15:
-                            reasons.append(f"Adv cede mtos pts p/ {POS_NAMES.get(pos_id,'?')} (MC={media_cedida_val:.1f})")
-                        elif difficulty_mult < 0.85:
-                            reasons.append(f"Adv forte — baixa cessão p/ {POS_NAMES.get(pos_id,'?')} (MC={media_cedida_val:.1f})")
+                        context_multiplier *= difficulty_adjusted
+
+                        if difficulty_adjusted > 1.15:
+                            reasons.append(f"Matchup Fórtil para {POS_NAMES.get(pos_id,'?')} (+{int((difficulty_adjusted-1)*100)}%)")
+                        elif difficulty_adjusted < 0.85:
+                            reasons.append(f"Matchup Difícil para {POS_NAMES.get(pos_id,'?')} (-{int((1-difficulty_adjusted)*100)}%)")
                     else:
-                        # Fallback se não temos adv_id mapeado no MediaCedida
-                        if is_home:
-                            context_multiplier *= 1.10
-                        else:
-                            context_multiplier *= 0.90
+                        if is_home: context_multiplier *= 1.10
+                        else: context_multiplier *= 0.90
 
                     break  # só processa a primeira partida encontrada
 
@@ -975,6 +1018,79 @@ class DataProcessor:
 
         return players
 
+    def get_top_sgs(self, cartola_partidas: Dict[str, Any], cartola_atletas: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Calcula os times com maior probabilidade de SG na rodada atual."""
+        if not cartola_partidas or 'partidas' not in cartola_partidas:
+            return []
+            
+        clubes_dict = cartola_atletas.get('clubes', {})
+        top_sgs = []
+        
+        for part in cartola_partidas.get('partidas', []):
+            if not part.get('valida', True):
+                continue
+                
+            casa_id = part.get('clube_casa_id')
+            vis_id = part.get('clube_visitante_id')
+            casa_pos = int(part.get('clube_casa_posicao', 10) or 10)
+            vis_pos = int(part.get('clube_visitante_posicao', 10) or 10)
+            
+            casa_uf = ESTADOS_CLUBES.get(casa_id, 'MY')
+            vis_uf = ESTADOS_CLUBES.get(vis_id, 'ADV')
+            is_derby = (casa_uf == vis_uf)
+
+            tier_casa = get_tier(casa_pos)
+            tier_vis = get_tier(vis_pos)
+
+            # Prob SG Casa
+            lambda_xga_casa = self.poisson.get_lambda_xGA(casa_id, True)
+            adv_atk_strength_vis = self.poisson.get_attack_strength(vis_id, False) if vis_id else 1.1
+            lambda_adjusted_casa = lambda_xga_casa * (adv_atk_strength_vis / 1.1)
+            prob_sg_casa = math.exp(-lambda_adjusted_casa)
+            
+            diff_casa = tier_casa - tier_vis
+            if not is_derby:
+                if diff_casa >= 2: prob_sg_casa *= max(0.15, 1.0 - (diff_casa * 0.20))
+                elif diff_casa <= -2: prob_sg_casa = min(0.95, prob_sg_casa * (1.0 + (abs(diff_casa) * 0.10)) * 1.1)
+            prob_sg_casa = min(0.95, prob_sg_casa)
+
+            # Prob SG Visitante
+            lambda_xga_vis = self.poisson.get_lambda_xGA(vis_id, False)
+            adv_atk_strength_casa = self.poisson.get_attack_strength(casa_id, True) if casa_id else 1.1
+            lambda_adjusted_vis = lambda_xga_vis * (adv_atk_strength_casa / 1.1)
+            prob_sg_vis = math.exp(-lambda_adjusted_vis)
+            
+            diff_vis = tier_vis - tier_casa
+            if not is_derby:
+                if diff_vis >= 2: prob_sg_vis *= max(0.15, 1.0 - (diff_vis * 0.20)) * 0.7
+                elif diff_vis <= -2: prob_sg_vis = min(0.95, prob_sg_vis * (1.0 + (abs(diff_vis) * 0.10)))
+            prob_sg_vis = min(0.95, prob_sg_vis)
+
+            # Insert Casa
+            if casa_id and str(casa_id) in clubes_dict:
+                c_info = clubes_dict[str(casa_id)]
+                top_sgs.append({
+                    "clube_id": casa_id,
+                    "nome": c_info.get("nome"),
+                    "escudo": c_info.get("escudos", {}).get("60x60"),
+                    "prob_sg": prob_sg_casa,
+                    "adversario": clubes_dict.get(str(vis_id), {}).get("nome", "???"),
+                    "mando": "casa"
+                })
+            # Insert Visitante
+            if vis_id and str(vis_id) in clubes_dict:
+                v_info = clubes_dict[str(vis_id)]
+                top_sgs.append({
+                    "clube_id": vis_id,
+                    "nome": v_info.get("nome"),
+                    "escudo": v_info.get("escudos", {}).get("60x60"),
+                    "prob_sg": prob_sg_vis,
+                    "adversario": clubes_dict.get(str(casa_id), {}).get("nome", "???"),
+                    "mando": "fora"
+                })
+                
+        top_sgs.sort(key=lambda x: x["prob_sg"], reverse=True)
+        return top_sgs[:4]
 
 # Singleton global
 data_processor = DataProcessor()

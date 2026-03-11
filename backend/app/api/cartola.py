@@ -113,10 +113,22 @@ async def optimize_real(
         result = engine.optimize_team(players_normalized)
 
         # ── 6. Enriquecer metadados do resultado ──────────────────────
+        titulares = [p for p in result["results"]["lineup"] if p["is_titular"]]
         reservas = [p for p in result["results"]["lineup"] if not p["is_titular"]]
+        
+        # Calcular valorização esperada baseada na fórmula interna (pts_valorizacao * fator_c)
+        pts_val = sum(p.get("pontos_valorizacao", 0.0) for p in titulares)
+        expected_val_cs = pts_val * 0.45
+        
         result["meta"]["roi_cartoletas"] = (
-            result["meta"]["total_expected_points"] * 0.45 if modo == "valorizacao" else 0.0
+            expected_val_cs if modo == "valorizacao" else (expected_val_cs * 0.5) 
+            # O modo mitagem ainda ganha algumas cartoletas, mas menos.
         )
+        result["meta"]["expected_valorization"] = expected_val_cs
+        
+        # Inserir previsão de Melhores SGs da rodada
+        result["meta"]["top_sgs"] = data_processor.get_top_sgs(cartola_partidas, cartola_data)
+        
         result["meta"]["score_protecao"] = (
             sum(p["pontos_esperados"] for p in reservas) / max(1, len(reservas))
         )
