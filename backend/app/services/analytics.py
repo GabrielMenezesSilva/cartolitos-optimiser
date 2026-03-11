@@ -903,6 +903,7 @@ class DataProcessor:
 
         players: List[Dict[str, Any]] = []
         raw_players = cartola_atletas.get('atletas', [])
+        clubes_dict = cartola_atletas.get('clubes', {})
         if not isinstance(raw_players, list):
             return players
 
@@ -914,6 +915,12 @@ class DataProcessor:
             clube = rp.get('clube_id')
             preco = float(rp.get('preco_num', 0.0) or 0.0)
             ultima_pt = float(rp.get('pontos_num', 0.0) or 0.0)
+            
+            # Buscar a sigla do clube 
+            clube_slug = '??'
+            if clube and str(clube) in clubes_dict:
+                clube_info = clubes_dict[str(clube)]
+                clube_slug = clube_info.get('abreviacao') or clube_info.get('slug') or '??'
 
             # Alimentar clusterer com dados do mercado atual
             scouts_cur = rp.get('scout', {})
@@ -955,6 +962,7 @@ class DataProcessor:
                 "pontos_valorizacao": pts_valorizacao,
                 "solver_score": solver_score,
                 "clube_id": clube,
+                "clube_slug": clube_slug,
                 "status_id": rp.get('status_id'),
                 "foto": rp.get('foto'),
                 "reason": reason,
