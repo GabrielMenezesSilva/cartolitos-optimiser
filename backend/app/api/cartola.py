@@ -141,3 +141,65 @@ async def optimize_real(
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erro no pipeline full: {str(e)}")
+
+
+@router.get("/optimize-real/multiple")
+async def optimize_real_multiple(
+    budget: float = 140.0,
+    formation: str = "4-3-3",
+    ousadia: int = 5,
+    modo: str = "mitagem",
+    rodadas_historicas: int = 5,
+    num_lineups: int = 3,
+):
+    """
+    Gera até `num_lineups` escalações distintas usando no-good cuts no solver ILP.
+    Cada escalação tem pelo menos 1 jogador diferente da anterior.
+    """
+    try:
+        cartola_data, status_mercado = await asyncio.gather(
+            cartola_service.get_atletas_mercado(),
+            cartola_service.get_mercado_status(),
+            return_exceptions=False,
+        )
+
+        rodada_atual = int(status_mercado.get('rodada_atual', 2)) if isinstance(status_mercado, dict) else 2
+
+        ingested_count = 0
+        try:
+            ingested_count = await _ingest_historical_rounds(rodada_atual, num_rounds=rodadas_historicas)
+        except Exception:
+            pass
+
+        cartola_partidas = None
+        try:
+            cartola_partidas = await cartola_service.get_partidas()
+        except Exception:
+            pass
+
+        players_normalized = data_processor.normalize_players(
+            cartola_data,
+            objective=modo,
+            cartola_partidas=cartola_partidas,
+            ousadia=ousadia,
+        )
+
+        engine = MathEngine(budget=budget, formation=formation, objective=modo)
+        lineups = engine.optimize_multiple(players_normalized, num_lineups=min(num_lineups, 5))
+
+        # Enrich each lineup metadata
+        for result in lineups:
+            titulares = [p for p in result["results"]["lineup"] if p["is_titular"]]
+            reservas = [p for p in result["results"]["lineup"] if not p["is_titular"]]
+            pts_val = sum(p.get("pontos_valorizacao", 0.0) for p in titulares)
+            expected_val_cs = pts_val * 0.45
+            result["meta"]["roi_cartoletas"] = expected_val_cs if modo == "valorizacao" else expected_val_cs * 0.5
+            result["meta"]["expected_valorization"] = expected_val_cs
+            result["meta"]["top_sgs"] = data_processor.get_top_sgs(cartola_partidas, cartola_data)
+            result["meta"]["score_protecao"] = sum(p["pontos_esperados"] for p in reservas) / max(1, len(reservas))
+            result["meta"]["rodadas_historicas_ingeridas"] = ingested_count
+
+        return {"lineups": lineups, "total": len(lineups)}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erro no pipeline múltiplas escalações: {str(e)}")

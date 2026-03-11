@@ -44,11 +44,17 @@ export function Campinho({ loading, result }: CampinhoProps) {
 
     const titulares = result.results?.lineup?.filter((p: any) => p.is_titular) ?? [];
 
-    // Order: top=attackers, then midfielders, then defenders+fullbacks, then goalkeeper
+    // Order: top=attackers, then midfielders, then defenders (LAT-ZAG-ZAG-LAT), then goalkeeper
+    const defRow = (() => {
+        const lats = titulares.filter((p: any) => p.pos_id === 2);
+        const zags = titulares.filter((p: any) => p.pos_id === 3);
+        if (lats.length === 2) return [lats[0], ...zags, lats[1]];
+        return [...lats, ...zags];
+    })();
     const rows: any[][] = [
         titulares.filter((p: any) => p.pos_id === 5),               // ATA
         titulares.filter((p: any) => p.pos_id === 4),               // MEI
-        titulares.filter((p: any) => p.pos_id === 2 || p.pos_id === 3), // LAT + ZAG
+        defRow,                                                      // LAT-ZAG-ZAG-LAT
         titulares.filter((p: any) => p.pos_id === 1),               // GOL
     ].filter(r => r.length > 0);
 

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Cpu, ShieldAlert, Zap, TrendingUp, Settings2, Save, User, CheckCircle, XCircle, X, Plus, Trash2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { optimizeLineup, saveLineup } from '../services/api';
+import { optimizeMultiple, saveLineup } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import { Campinho } from '../components/Campinho';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -62,7 +62,6 @@ export default function Optimiser() {
   const result = activeTab.result;
   const setBudget = (b: number) => updateActiveTab({ budget: b });
   const setModo = (m: string) => updateActiveTab({ modo: m });
-  const setResult = (r: any) => updateActiveTab({ result: r });
 
   const addNewTab = () => {
     const newId = Math.random().toString(36).substring(2, 9);
@@ -91,10 +90,24 @@ export default function Optimiser() {
 
   const handleOptimize = async () => {
     setLoading(true);
-    setResult(null);
+    // Clear all tabs before optimizing
+    setTabs(prev => prev.map(t => ({ ...t, result: null })));
     try {
-      const data = await optimizeLineup(budget, modo, token);
-      setResult(data);
+      const data = await optimizeMultiple(budget, modo, token, 3);
+      const lineups: any[] = data?.lineups ?? [];
+      if (lineups.length === 0) throw new Error('Nenhuma escalação gerada.');
+
+      // Build exactly 3 tabs from the returned lineups
+      const newTabs = [1, 2, 3].map((n, i) => ({
+        id: String(n),
+        name: `Opção ${n}`,
+        budget,
+        modo,
+        result: lineups[i] ?? null,
+      }));
+      setTabs(newTabs);
+      setActiveTabId('1');
+      addToast('success', `${lineups.length} escalações geradas! Compare as opções nas abas acima.`);
     } catch (e: any) {
       console.error('Error optimizing:', e);
       const msg = e?.response?.data?.detail ?? 'Falha ao rodar o otimizador. Tente novamente.';

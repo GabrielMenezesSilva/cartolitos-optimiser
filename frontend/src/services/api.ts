@@ -49,4 +49,18 @@ export const optimizeLineup = async (budget: number, modo: string, token: string
     return response.data;
 };
 
+export const optimizeMultiple = async (budget: number, modo: string, token: string | null = null, numLineups = 3) => {
+    const headers = token ? { Authorization: `Bearer ${token}` } : {};
+    const response = await api.get('/api/v1/cartola/optimize-real/multiple', {
+        params: {
+            budget,
+            modo,
+            formation: '4-3-3',
+            num_lineups: numLineups,
+        },
+        headers
+    });
+    return response.data; // { lineups: [...], total: N }
+};
+
 export default api;
