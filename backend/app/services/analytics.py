@@ -1023,6 +1023,19 @@ class DataProcessor:
             cluster_label = self.clusterer.get_cluster_label(atleta_id)
             consistency_score = self.markov.get_consistency_score(atleta_id)
 
+            # Adicionar heurísticas positivas baseadas em preço e projeção (Custo-Benefício)
+            reasons_list = explain_dict.get("reasons", [])
+            if preco > 0:
+                cb_ratio = pts_esperados / preco
+                if preco <= 5.0 and pts_esperados >= 2.0:
+                    reasons_list.append("Bom Custo-Benefício: Jogador muito barato que ajuda a libertar cartoletas para outras posições (Enabler).")
+                elif cb_ratio >= 1.0 and pts_esperados >= 5.0:
+                    reasons_list.append("Custo-Benefício Excelente: Projeção de pontos muito alta em relação ao seu preço atual.")
+                elif preco >= 15.0 and pts_esperados >= 8.0:
+                    reasons_list.append("Premium Confirmado: Jogador caro mas com projeção forte que justifica o investimento.")
+            
+            explain_dict["reasons"] = reasons_list
+
             p = {
                 "id": rp.get('atleta_id'),
                 "nome": rp.get('apelido'),
