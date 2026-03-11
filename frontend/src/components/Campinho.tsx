@@ -110,7 +110,6 @@ export function Campinho({ loading, result }: CampinhoProps) {
                                         player={p}
                                         isCaptain={p.is_capitao}
                                         delay={delayCounter}
-                                        isTopRow={rowIdx === 0}
                                         isLeftmost={isLeftmost}
                                         isRightmost={isRightmost}
                                     />

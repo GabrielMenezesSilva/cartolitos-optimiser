@@ -9,12 +9,11 @@ interface PlayerCardProps {
     delay?: number;
     className?: string;
     isCoach?: boolean;
-    isTopRow?: boolean;
     isLeftmost?: boolean;
     isRightmost?: boolean;
 }
 
-export function PlayerCard({ player, isCaptain = false, delay = 0, className, isCoach = false, isTopRow = false, isLeftmost = false, isRightmost = false }: PlayerCardProps) {
+export function PlayerCard({ player, isCaptain = false, delay = 0, className, isCoach = false, isLeftmost = false, isRightmost = false }: PlayerCardProps) {
     const [hovered, setHovered] = useState(false);
     const photoUrl = player.foto ? player.foto.replace('FORMATO', '140x140') : null;
 
@@ -92,13 +91,12 @@ export function PlayerCard({ player, isCaptain = false, delay = 0, className, is
             <AnimatePresence>
                 {hovered && (
                     <motion.div
-                        initial={{ opacity: 0, y: isTopRow ? -6 : 6, scale: 0.95 }}
+                        initial={{ opacity: 0, y: -6, scale: 0.95 }}
                         animate={{ opacity: 1, y: 0, scale: 1 }}
-                        exit={{ opacity: 0, y: isTopRow ? -6 : 6, scale: 0.95 }}
+                        exit={{ opacity: 0, y: -6, scale: 0.95 }}
                         transition={{ duration: 0.15 }}
                         className={cn(
-                            "absolute bg-slate-950/98 backdrop-blur-2xl border border-white/10 p-4 rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.7)] w-52 pointer-events-none overflow-hidden",
-                            isTopRow ? "top-full mt-3" : "bottom-full mb-3",
+                            "absolute bg-slate-950/98 backdrop-blur-2xl border border-white/10 p-4 rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.7)] w-52 pointer-events-none overflow-hidden top-full mt-3",
                             isLeftmost ? "left-0" : isRightmost ? "right-0" : "left-1/2 -translate-x-1/2"
                         )}
                         style={{ zIndex: 9999 }}
@@ -144,8 +142,7 @@ export function PlayerCard({ player, isCaptain = false, delay = 0, className, is
 
                         {/* Arrow */}
                         <div className={cn(
-                            "absolute w-3 h-3 bg-slate-950 border-white/10 rotate-45 transform",
-                            isTopRow ? "-top-1.5 border-t border-l" : "-bottom-1.5 border-b border-r",
+                            "absolute w-3 h-3 bg-slate-950 border-white/10 rotate-45 transform -top-1.5 border-t border-l",
                             isLeftmost ? "left-6" : isRightmost ? "right-6" : "left-1/2 -translate-x-1/2"
                         )} />
                     </motion.div>
