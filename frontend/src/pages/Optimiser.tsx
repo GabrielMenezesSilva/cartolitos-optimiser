@@ -244,7 +244,7 @@ export default function Optimiser() {
 
       {/* Dashboard Grid */}
       <div className="flex-1 p-6 h-full overflow-y-auto">
-        <div className="max-w-[1600px] mx-auto grid grid-cols-1 lg:grid-cols-12 gap-8 pb-20">
+        <div className="max-w-[1600px] mx-auto grid grid-cols-1 lg:grid-cols-12 gap-8 pb-8">
 
           {/* Lado Esquerdo: Controles */}
           <aside className="col-span-1 lg:col-span-3 space-y-6">
@@ -342,7 +342,7 @@ export default function Optimiser() {
           </aside>
 
           {/* Centro: O Campo */}
-          <section className="col-span-1 lg:col-span-6 flex flex-col border border-slate-800/60 rounded-3xl bg-[#0a0f1d] shadow-2xl relative min-h-[600px] xl:min-h-[750px]">
+          <section className="col-span-1 lg:col-span-6 flex flex-col border border-slate-800/60 rounded-3xl bg-[#0a0f1d] shadow-2xl relative">
             {/* Inner background glow */}
             <div className="absolute inset-0 bg-emerald-500/5 mix-blend-screen pointer-events-none" />
             <Campinho loading={loading} result={result} />
@@ -552,7 +552,7 @@ export default function Optimiser() {
                     <div className="bg-slate-900/50 rounded-xl p-3 border border-white/5 space-y-2">
                       <div className="flex items-center justify-between text-xs">
                         <span className="text-slate-400">Confronto:</span>
-                        <span className="text-slate-200 font-medium">vs {meta.opponent_name || 'Adversário'} ({meta.is_home ? 'Casa' : 'Fora'})</span>
+                        <span className="text-slate-200 font-medium">vs {meta.adv_name || 'Adversário'} ({meta.is_home ? 'Casa' : 'Fora'})</span>
                       </div>
                       {meta.difficulty_reason && (
                         <div className="flex items-center justify-between text-[10px]">
