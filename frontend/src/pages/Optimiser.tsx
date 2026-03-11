@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Cpu, ShieldAlert, Zap, TrendingUp, Settings2, Save, User, CheckCircle, XCircle, X } from 'lucide-react';
+import { Cpu, ShieldAlert, Zap, TrendingUp, Settings2, Save, User, CheckCircle, XCircle, X, Plus, Trash2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { optimizeLineup, saveLineup } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
@@ -7,18 +7,78 @@ import { Campinho } from '../components/Campinho';
 import { motion, AnimatePresence } from 'framer-motion';
 import clsx from 'clsx';
 
+// Type da Aba
+type OptimiserTab = {
+  id: string;
+  name: string;
+  budget: number;
+  modo: string;
+  result: any;
+};
+
 // Toast simples
 type Toast = { id: number; type: 'success' | 'error'; message: string };
 
 export default function Optimiser() {
   const [loading, setLoading] = useState(false);
-  const [budget, setBudget] = useState(140);
-  const [modo, setModo] = useState('mitagem');
-  const [result, setResult] = useState<any>(null);
   const [panicMode, setPanicMode] = useState(false);
   const [saving, setSaving] = useState(false);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const toastCounter = useRef(0);
+
+  const [tabs, setTabs] = useState<OptimiserTab[]>(() => {
+    try {
+      const saved = localStorage.getItem('@cartolitos:tabs');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (e) { }
+    return [{ id: '1', name: 'Escalação 1', budget: 140, modo: 'mitagem', result: null }];
+  });
+
+  const [activeTabId, setActiveTabId] = useState<string>(() => {
+    return localStorage.getItem('@cartolitos:activeTab') || '1';
+  });
+
+  // Garante que activeTabId é válido
+  const activeTab = tabs.find(t => t.id === activeTabId) || tabs[0];
+  if (activeTab.id !== activeTabId) {
+    setActiveTabId(activeTab.id);
+  }
+
+  // Sincroniza abas no LocalStorage
+  useEffect(() => {
+    localStorage.setItem('@cartolitos:tabs', JSON.stringify(tabs));
+    localStorage.setItem('@cartolitos:activeTab', activeTabId);
+  }, [tabs, activeTabId]);
+
+  const updateActiveTab = (updates: Partial<OptimiserTab>) => {
+    setTabs(prev => prev.map(t => t.id === activeTab.id ? { ...t, ...updates } : t));
+  };
+
+  const budget = activeTab.budget;
+  const modo = activeTab.modo;
+  const result = activeTab.result;
+  const setBudget = (b: number) => updateActiveTab({ budget: b });
+  const setModo = (m: string) => updateActiveTab({ modo: m });
+  const setResult = (r: any) => updateActiveTab({ result: r });
+
+  const addNewTab = () => {
+    const newId = Math.random().toString(36).substring(2, 9);
+    setTabs([...tabs, { id: newId, name: `Escalação ${tabs.length + 1}`, budget: 140, modo: 'mitagem', result: null }]);
+    setActiveTabId(newId);
+  };
+
+  const closeTab = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (tabs.length === 1) return; // Nao deixa fechar a ultima aba
+    const newTabs = tabs.filter(t => t.id !== id);
+    setTabs(newTabs);
+    if (activeTabId === id) {
+      setActiveTabId(newTabs[newTabs.length - 1].id);
+    }
+  };
 
   const { token, user } = useAuth();
   const navigate = useNavigate();
@@ -145,6 +205,41 @@ export default function Optimiser() {
             <span className="hidden sm:inline">{panicMode ? 'Panic Mode Ativo' : 'Panic Button'}</span>
           </button>
         </div>
+      </div>
+
+      {/* Tabs Bar */}
+      <div className="px-6 pt-3 flex gap-2 overflow-x-auto border-b border-slate-800/50 bg-[#0f172a]/20 shrink-0 custom-scrollbar z-20 relative">
+        {tabs.map((t) => (
+          <div
+            key={t.id}
+            onClick={() => setActiveTabId(t.id)}
+            className={clsx(
+              "group relative flex items-center gap-2 px-4 py-2.5 rounded-t-xl cursor-pointer border-t-2 border-l border-r transition-all min-w-[160px] max-w-[220px]",
+              activeTabId === t.id
+                ? "bg-slate-900 border-t-emerald-500 border-l-slate-800/50 border-r-slate-800/50 text-emerald-400 font-bold shadow-[0_-5px_20px_rgba(16,185,129,0.05)]"
+                : "bg-slate-950/50 border-t-transparent border-l-transparent border-r-transparent text-slate-500 hover:text-slate-300 hover:bg-slate-800/50"
+            )}
+          >
+            <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: t.modo === 'valorizacao' ? '#fbbf24' : '#10b981' }} />
+            <span className="truncate flex-1 text-sm">{t.name}</span>
+            <button
+              onClick={(e) => closeTab(t.id, e)}
+              className={clsx(
+                "p-1 rounded-md opacity-0 group-hover:opacity-100 hover:bg-red-500/20 hover:text-red-400 transition-all",
+                tabs.length === 1 && "hidden"
+              )}
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        ))}
+        <button
+          onClick={addNewTab}
+          className="flex items-center justify-center px-3 py-2 mt-0.5 mb-1.5 ml-1 rounded-lg text-slate-400 hover:text-emerald-400 hover:bg-emerald-500/10 transition-colors shrink-0 border border-transparent hover:border-emerald-500/20"
+          title="Nova Escalação"
+        >
+          <Plus className="w-4 h-4" />
+        </button>
       </div>
 
       {/* Dashboard Grid */}
