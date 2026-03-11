@@ -78,12 +78,12 @@ export function Campinho({ loading, result }: CampinhoProps) {
             </div>
 
             {/* Tactical info badge */}
-            <div className={`absolute top-4 left-4 bg-black/50 backdrop-blur-md border px-3 py-1.5 rounded-xl z-20 ${result.objective === 'valorizacao' ? 'border-amber-500/50' : 'border-emerald-500/50'}`}>
-                <p className={`text-[9px] uppercase tracking-widest font-bold ${result.objective === 'valorizacao' ? 'text-amber-400' : 'text-emerald-400'}`}>
+            <div className={`absolute top-4 left-4 bg-black/50 backdrop-blur-md border px-3 py-1.5 rounded-xl z-20 ${result.config?.objective === 'valorizacao' ? 'border-amber-500/50' : 'border-emerald-500/50'}`}>
+                <p className={`text-[9px] uppercase tracking-widest font-bold ${result.config?.objective === 'valorizacao' ? 'text-amber-400' : 'text-emerald-400'}`}>
                     Estratégia
                 </p>
                 <p className="text-white text-xs font-mono font-bold">
-                    {result.objective === 'valorizacao' ? 'Foco em Cartoletas' : 'Foco em Pontuação'}
+                    {result.config?.objective === 'valorizacao' ? 'Foco em Cartoletas' : 'Foco em Pontuação'}
                 </p>
             </div>
 

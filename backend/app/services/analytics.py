@@ -699,7 +699,8 @@ class DataProcessor:
         self,
         player: Dict[str, Any],
         matches: Optional[Dict[str, Any]] = None,
-    ) -> Tuple[float, str]:
+        clubes_dict: Optional[Dict[str, Any]] = None,
+    ) -> Tuple[float, Dict[str, Any]]:
         """
         Pipeline completo de cálculo de pontuação esperada:
         1. Score base (scouts × pesos fixos) por jogo
@@ -751,6 +752,19 @@ class DataProcessor:
         media_cedida_val = 5.0  # default neutro
         is_home = True  # default
 
+        explain_dict = {
+            "reasons": reasons,
+            "base_media": 0.0,
+            "is_home": True,
+            "adv_name": "N/A",
+            "adv_slug": "N/A",
+            "tier_diff": 0,
+            "is_derby": False,
+            "difficulty_adjusted": 1.0,
+            "lambda_xga": lambda_xga,
+            "media_cedida_val": media_cedida_val,
+        }
+
         if matches and isinstance(matches, dict) and 'partidas' in matches:
             partidas = matches.get('partidas', [])
             if isinstance(partidas, list):
@@ -765,10 +779,17 @@ class DataProcessor:
 
                     valida = part.get('valida', True)
                     if not valida:
-                        return 0.0, "Jogo Inválido (Cancelado/Adiado)"
+                        explain_dict["reasons"].append("Jogo Inválido (Cancelado/Adiado)")
+                        return 0.0, explain_dict
 
                     is_home = home_match
+                    explain_dict["is_home"] = is_home
+                    
                     adv_id = part.get('clube_visitante_id' if is_home else 'clube_casa_id')
+                    if adv_id and clubes_dict:
+                        explain_dict["adv_name"] = clubes_dict.get(str(adv_id), {}).get("nome", "???")
+                        explain_dict["adv_slug"] = clubes_dict.get(str(adv_id), {}).get("slug", "???")
+
                     adv_pos = int(part.get('clube_visitante_posicao' if is_home else 'clube_casa_posicao', 10) or 10)
                     my_pos = int(part.get('clube_casa_posicao' if is_home else 'clube_visitante_posicao', 10) or 10)
                     
@@ -809,9 +830,11 @@ class DataProcessor:
                     my_tier = get_tier(my_pos)
                     adv_tier = get_tier(adv_pos)
                     tier_diff = my_tier - adv_tier
+                    explain_dict["tier_diff"] = tier_diff
 
                     if is_derby:
                         tier_diff = 0 # Anula discrepância extrema da tabela
+                        explain_dict["is_derby"] = True
                         reasons.append("Derby (Clássico)")
 
                     if tier_diff >= 2: # Zebra
@@ -865,18 +888,22 @@ class DataProcessor:
                         # Ajusta dificuldade baseado no favoritismo. Favoritos furam mais defesas, zebras menos.
                         diff_cross_weight = 1.0 - (tier_diff * 0.05)
                         difficulty_adjusted = difficulty_mult * max(0.8, min(1.2, diff_cross_weight))
+                        explain_dict["difficulty_adjusted"] = difficulty_adjusted
 
                         context_multiplier *= difficulty_adjusted
 
                         if difficulty_adjusted > 1.15:
-                            reasons.append(f"Matchup Fórtil para {POS_NAMES.get(pos_id,'?')} (+{int((difficulty_adjusted-1)*100)}%)")
+                            reasons.append(f"Matchup Favorável para sua posição (+{int((difficulty_adjusted-1)*100)}%)")
                         elif difficulty_adjusted < 0.85:
-                            reasons.append(f"Matchup Difícil para {POS_NAMES.get(pos_id,'?')} (-{int((1-difficulty_adjusted)*100)}%)")
+                            reasons.append(f"Matchup Difícil para sua posição (-{int((1-difficulty_adjusted)*100)}%)")
                     else:
                         if is_home: context_multiplier *= 1.10
                         else: context_multiplier *= 0.90
 
                     break  # só processa a primeira partida encontrada
+                    
+        explain_dict["lambda_xga"] = lambda_xga
+        explain_dict["media_cedida_val"] = media_cedida_val
 
         # STEP 6: Bônus de perfil técnico (Affinity Propagation)
         cluster_bonus = self.clusterer.get_cluster_bonus(atleta_id, pos_id)
@@ -922,10 +949,9 @@ class DataProcessor:
         if int(player.get('status_id', 0) or 0) != 7:
             final_ep = -999.0
 
-        if not reasons:
-            reasons.append(f"Baseado na média histórica ({media_hist:.1f} pts)")
-
-        return final_ep, reasons[0]
+        explain_dict["base_media"] = media_hist
+        
+        return final_ep, explain_dict
 
     # ------------------------------------------------------------------
     # NORMALIZAÇÃO DE JOGADORES (interface com o Solver)
@@ -972,7 +998,7 @@ class DataProcessor:
                 jogos_cur = max(int(rp.get('jogos_num', 1) or 1), 1)
                 self.clusterer.ingest_player_features(atleta_id_cur, scouts_cur, jogos_cur)
 
-            pts_esperados, reason = self._calculate_expected_points(rp, cartola_partidas)
+            pts_esperados, explain_dict = self._calculate_expected_points(rp, cartola_partidas, clubes_dict)
 
             # MV (Mínimo para Valorizar)
             from app.services.market import cartola_service
@@ -984,10 +1010,11 @@ class DataProcessor:
             # Ousadia baixa → penaliza jogadores voláteis
             ousadia_factor = 0.8 + (ousadia * 0.04)  # 0.84 a 1.16
 
+            explain_dict["valorizacao_mv"] = mv
+            explain_dict["expected_valorization"] = pts_valorizacao
+            
             if objective == "valorizacao":
                 solver_score = pts_valorizacao * ousadia_factor
-                if pts_valorizacao > 0:
-                    reason = f"Precisa de apenas {mv:.1f} pts para valorizar (EV Val: {pts_valorizacao:.1f})"
             else:
                 solver_score = pts_esperados * ousadia_factor
 
@@ -1008,7 +1035,7 @@ class DataProcessor:
                 "clube_slug": clube_slug,
                 "status_id": rp.get('status_id'),
                 "foto": rp.get('foto'),
-                "reason": reason,
+                "metadata_explicativa": explain_dict,
                 "perfil": cluster_label,
                 "consistencia": round(consistency_score, 2),
             }
@@ -1086,7 +1113,8 @@ class DataProcessor:
                     "escudo": v_info.get("escudos", {}).get("60x60"),
                     "prob_sg": prob_sg_vis,
                     "adversario": clubes_dict.get(str(casa_id), {}).get("nome", "???"),
-                    "mando": "fora"
+                    "mando": "fora",
+                    "motivo": f"Enfrenta {clubes_dict.get(str(casa_id), {}).get('nome', '???')} com ataque fraco e histórico ruim. IA calcula SG provável." if adv_atk_strength_casa < 1.0 else "Calculado via Poisson considerando tiers e força defensiva."
                 })
                 
         top_sgs.sort(key=lambda x: x["prob_sg"], reverse=True)

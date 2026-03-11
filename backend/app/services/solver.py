@@ -90,6 +90,12 @@ class MathEngine:
                 if is_titular:
                     expected_points += pts_esp * 2 if is_captain else pts_esp
 
+                meta_exp = p.get('metadata_explicativa', {}).copy()
+                if is_captain:
+                    meta_exp["capitao_motivo"] = "Escolhida pela inteligência como a opção com maior teto de pontos, ideal para dobrar a pontuação."
+                if is_reserva:
+                    meta_exp["reserva_motivo"] = "Reserva de luxo: opção mais barata que todos os titulares da posição, mas com alto Custo-Benefício."
+
                 lineup.append({
                     "id": p['id'],
                     "nome": p['nome'],
@@ -107,6 +113,7 @@ class MathEngine:
                     "reason": p.get('reason', 'N/A'),
                     "perfil": p.get('perfil', 'Desconhecido'),
                     "consistencia": p.get('consistencia', 0.5),
+                    "metadata_explicativa": meta_exp,
                 })
 
         # Sort lineup for better presentation: Goalkeeper, Defenders, Midfielders, Attackers, Coach, Subs
