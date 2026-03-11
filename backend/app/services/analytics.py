@@ -835,18 +835,18 @@ class DataProcessor:
                     if is_derby:
                         tier_diff = 0 # Anula discrepância extrema da tabela
                         explain_dict["is_derby"] = True
-                        reasons.append("Derby (Clássico)")
+                        reasons.append("Clássico Regional: Jogo tende a ser muito disputado e imprevisível.")
 
                     if tier_diff >= 2: # Zebra
                         underdog_penalty = max(0.40, 1.0 - (tier_diff * 0.15))
                         if not is_home: underdog_penalty *= 0.85
                         context_multiplier *= underdog_penalty
-                        reasons.append(f"Zebra (T{my_tier} vs T{adv_tier}{' Fora' if not is_home else ''})")
+                        reasons.append(f"Jogo Difícil: Enfrenta um adversário mais forte{' fora de casa' if not is_home else ''}.")
                     elif tier_diff <= -2: # Favorito
                         favorite_bonus = min(1.30, 1.0 + (abs(tier_diff) * 0.08))
                         if is_home: favorite_bonus *= 1.10
                         context_multiplier *= favorite_bonus
-                        reasons.append(f"Favorito (T{my_tier} vs T{adv_tier}{' Casa' if is_home else ''})")
+                        reasons.append(f"Amplo Favorito: É superior ao adversário{' e joga com apoio da torcida' if is_home else ''}.")
 
                     # STEP 4: Poisson Cruzado com λ REAL e Força do Oponente
                     if pos_id in DEFENSIVE_POSITIONS:
@@ -870,13 +870,13 @@ class DataProcessor:
                         
                         sg_pct = prob_sg * 100
                         if sg_pct > 40:
-                            reasons.append(f"SG: {sg_pct:.1f}%")
+                            reasons.append(f"Defesa Sólida: Alta probabilidade de garantir saldo de gols (+5 pontos) nesta rodada ({sg_pct:.0f}% chance).")
                     else:
                         atk_strength = self.poisson.get_attack_strength(clube_id, is_home)
                         adv_xga = self.poisson.get_lambda_xGA(adv_id, not is_home) if adv_id else 1.1
                         lambda_xga = atk_strength * (adv_xga / 1.1)
                         if lambda_xga > 1.5:
-                            reasons.append(f"Ataque ++ (λ={lambda_xga:.2f})")
+                            reasons.append(f"Ataque Potente: Ótima expectativa de que este time marque muitos gols no jogo.")
 
                     # STEP 5: Média Cedida por Posição (Cruzada contra Tiers)
                     if adv_id:
@@ -893,9 +893,9 @@ class DataProcessor:
                         context_multiplier *= difficulty_adjusted
 
                         if difficulty_adjusted > 1.15:
-                            reasons.append(f"Matchup Favorável para sua posição (+{int((difficulty_adjusted-1)*100)}%)")
+                            reasons.append(f"Adversário Frágil: O time oponente costuma ceder muitos pontos para essa posição.")
                         elif difficulty_adjusted < 0.85:
-                            reasons.append(f"Matchup Difícil para sua posição (-{int((1-difficulty_adjusted)*100)}%)")
+                            reasons.append(f"Marcação Dura: O time oponente costuma anular jogadores dessa posição.")
                     else:
                         if is_home: context_multiplier *= 1.10
                         else: context_multiplier *= 0.90
@@ -910,7 +910,7 @@ class DataProcessor:
         context_multiplier *= cluster_bonus
         cluster_label = self.clusterer.get_cluster_label(atleta_id)
         if cluster_label != "Desconhecido" and abs(cluster_bonus - 1.0) > 0.05:
-            reasons.append(f"Perfil: {cluster_label} (×{cluster_bonus:.2f})")
+            reasons.append(f"Beneficiado: Seu estilo de jogo '{cluster_label}' o favorece estatisticamente.")
 
         # STEP 7: Penalidade de consistência (Markov)
         volatility = self.markov.get_volatility_penalty(atleta_id)
@@ -919,7 +919,7 @@ class DataProcessor:
         markov_factor = 1.0 - (volatility * 0.20)
         context_multiplier *= markov_factor
         if volatility > 0.5:
-            reasons.append(f"Alta volatilidade Markov ({volatility:.2f}) — penalidade aplicada")
+            reasons.append(f"Risco de Zebra: Jogador oscila muito e tem histórico instável, pontos ajustados por segurança.")
 
         # ── STEP 8: Random Forest override ─────────────────────────────
         media_hist = float(
@@ -940,7 +940,7 @@ class DataProcessor:
         if rf_pred is not None:
             # Blend: 60% RF + 40% determinístico para não perder transparência
             base_projection = (rf_pred * 0.60) + (base_projection * 0.40)
-            reasons.append(f"RF preditivo blend (RF={rf_pred:.1f})")
+            reasons.append(f"Aprovado: Nossa IA preditiva projeta uma excelente partida para ele.")
 
         # ── SCORE FINAL ─────────────────────────────────────────────
         final_ep = float(base_projection * context_multiplier)

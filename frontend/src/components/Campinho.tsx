@@ -101,8 +101,10 @@ export function Campinho({ loading, result }: CampinhoProps) {
                         className="flex justify-around items-center w-full"
                         style={{ zIndex: 10 }}
                     >
-                        {row.map((p: any) => {
+                        {row.map((p: any, colIdx: number) => {
                             delayCounter++;
+                            const isLeftmost = (colIdx === 0 && row.length > 2);
+                            const isRightmost = (colIdx === row.length - 1 && row.length > 2);
                             return (
                                 <div key={p.id} style={{ position: 'relative', zIndex: 10 }}>
                                     <PlayerCard
@@ -110,6 +112,8 @@ export function Campinho({ loading, result }: CampinhoProps) {
                                         isCaptain={p.is_capitao}
                                         delay={delayCounter}
                                         isTopRow={rowIdx === 0}
+                                        isLeftmost={isLeftmost}
+                                        isRightmost={isRightmost}
                                     />
                                 </div>
                             );

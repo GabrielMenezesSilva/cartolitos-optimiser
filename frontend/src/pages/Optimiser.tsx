@@ -341,12 +341,108 @@ export default function Optimiser() {
             )}
           </aside>
 
-          {/* Centro: O Campo */}
-          <section className="col-span-1 lg:col-span-6 flex flex-col border border-slate-800/60 rounded-3xl bg-[#0a0f1d] shadow-2xl relative">
-            {/* Inner background glow */}
-            <div className="absolute inset-0 bg-emerald-500/5 mix-blend-screen pointer-events-none" />
-            <Campinho loading={loading} result={result} />
-          </section>
+          {/* Centro: O Campo e Análises */}
+          <div className="col-span-1 lg:col-span-6 flex flex-col gap-6">
+            {/* O Campo */}
+            <section className="flex flex-col border border-slate-800/60 rounded-3xl bg-[#0a0f1d] shadow-2xl relative">
+              {/* Inner background glow */}
+              <div className="absolute inset-0 bg-emerald-500/5 mix-blend-screen pointer-events-none" />
+              <Campinho loading={loading} result={result} />
+            </section>
+
+            {/* Entendendo as Escolhas da Inteligência Artificial */}
+            {result?.results?.lineup && (
+              <div className="bg-slate-900/60 border border-slate-800 rounded-3xl p-6 relative overflow-hidden">
+                <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-emerald-500 via-teal-500 to-indigo-500"></div>
+
+                <div className="mb-6 flex items-center gap-4">
+                  <div className="shrink-0 w-12 h-12 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center">
+                    <Cpu className="w-6 h-6 text-indigo-400" />
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-bold text-white tracking-tight">Análise do Gerador</h2>
+                    <p className="text-sm text-slate-400">Entenda os motivos da IA para cada escolha.</p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 gap-4">
+                  {result.results.lineup.map((p: any) => {
+                    const meta = p.metadata_explicativa || {};
+                    const isCaptain = p.is_capitao;
+                    const isBench = !p.is_titular;
+
+                    return (
+                      <div key={p.id} className="bg-black/40 border border-slate-800/80 rounded-2xl p-4 flex flex-col gap-3 group hover:border-slate-700 transition-colors">
+                        {/* Header do Card */}
+                        <div className="flex items-center gap-3">
+                          <div className="relative">
+                            <div className="w-12 h-12 rounded-full border-2 border-slate-700 bg-slate-800 overflow-hidden flex-shrink-0">
+                              {p.foto ? (
+                                <img src={p.foto.replace('FORMATO', '140x140')} alt={p.nome} className="w-full h-full object-cover" />
+                              ) : (
+                                <User className="w-6 h-6 text-slate-500 m-auto mt-2" />
+                              )}
+                            </div>
+                            {isCaptain && (
+                              <div className="absolute -bottom-2 -right-2 w-6 h-6 bg-amber-500 text-white rounded-full flex items-center justify-center text-[10px] font-bold border-2 border-slate-900 shadow-md">
+                                C
+                              </div>
+                            )}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center justify-between">
+                              <h3 className="text-sm font-bold text-white truncate">{p.nome}</h3>
+                              <span className={clsx(
+                                "px-2 py-0.5 rounded-md text-[10px] uppercase font-bold",
+                                isBench ? "bg-slate-800 text-slate-400" : "bg-emerald-500/20 text-emerald-400 border border-emerald-500/20"
+                              )}>
+                                {isBench ? 'Reserva' : p.pos_nome}
+                              </span>
+                            </div>
+                            <p className="text-xs text-slate-500 font-mono">C$ {p.preco.toFixed(1)} • {p.pontos_esperados.toFixed(1)} pt proj.</p>
+                          </div>
+                        </div>
+
+                        {/* Destaque (Capitão ou Reserva) */}
+                        {(meta.capitao_motivo || meta.reserva_motivo) && (
+                          <div className={clsx(
+                            "p-2.5 rounded-xl border text-xs leading-relaxed",
+                            meta.capitao_motivo ? "bg-amber-500/10 border-amber-500/20 text-amber-200/90" : "bg-indigo-500/10 border-indigo-500/20 text-indigo-300"
+                          )}>
+                            <strong className="block mb-0.5">{meta.capitao_motivo ? "👑 Capitão:" : "🛡️ Opção de Banco:"}</strong>
+                            {meta.capitao_motivo || meta.reserva_motivo}
+                          </div>
+                        )}
+
+                        {/* Info do Confronto */}
+                        <div className="bg-slate-900/50 rounded-xl p-3 border border-white/5 space-y-2 flex-grow">
+                          <div className="flex flex-col text-xs space-y-1">
+                            <span className="text-slate-400">Confronto:</span>
+                            <span className="text-slate-200 font-medium">vs {meta.adv_name || 'Adversário'} ({meta.is_home ? 'Casa' : 'Fora'})</span>
+                          </div>
+                          {meta.difficulty_reason && (
+                            <div className="flex items-center justify-between text-[10px]">
+                              <span className="text-slate-400">Nível do Jogo:</span>
+                              <span className="text-slate-300 bg-slate-800 px-1.5 py-0.5 rounded">{meta.difficulty_reason}</span>
+                            </div>
+                          )}
+                          {meta.reasons && meta.reasons.length > 0 && (
+                            <div className="pt-2 mt-2 border-t border-white/5">
+                              <ul className="text-[10px] text-slate-400 space-y-1 list-disc pl-3">
+                                {meta.reasons.map((r: string, idx: number) => (
+                                  <li key={idx}>{r}</li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
 
           {/* Lado Direito: Dashboards Analíticos */}
           <aside className="col-span-1 lg:col-span-3 space-y-6">
@@ -483,99 +579,6 @@ export default function Optimiser() {
           </aside>
 
         </div>
-
-        {/* Entendendo as Escolhas da Inteligência Artificial */}
-        {result?.results?.lineup && (
-          <div className="mt-10 bg-slate-900/60 border border-slate-800 rounded-3xl p-6 relative overflow-hidden">
-            <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-emerald-500 via-teal-500 to-indigo-500"></div>
-
-            <div className="mb-6 flex items-center gap-4">
-              <div className="w-12 h-12 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center">
-                <Cpu className="w-6 h-6 text-indigo-400" />
-              </div>
-              <div>
-                <h2 className="text-xl font-bold text-white tracking-tight">Análise do Gerador de Escalação</h2>
-                <p className="text-sm text-slate-400">Entenda os motivos por trás de cada escolha da IA para esta rodada.</p>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {result.results.lineup.map((p: any) => {
-                const meta = p.metadata_explicativa || {};
-                const isCaptain = p.is_capitao;
-                const isBench = !p.is_titular;
-
-                return (
-                  <div key={p.id} className="bg-black/40 border border-slate-800/80 rounded-2xl p-4 flex flex-col gap-3 group hover:border-slate-700 transition-colors">
-                    {/* Header do Card */}
-                    <div className="flex items-center gap-3">
-                      <div className="relative">
-                        <div className="w-12 h-12 rounded-full border-2 border-slate-700 bg-slate-800 overflow-hidden flex-shrink-0">
-                          {p.foto ? (
-                            <img src={p.foto.replace('FORMATO', '140x140')} alt={p.nome} className="w-full h-full object-cover" />
-                          ) : (
-                            <User className="w-6 h-6 text-slate-500 m-auto mt-2" />
-                          )}
-                        </div>
-                        {isCaptain && (
-                          <div className="absolute -bottom-2 -right-2 w-6 h-6 bg-amber-500 text-white rounded-full flex items-center justify-center text-[10px] font-bold border-2 border-slate-900 shadow-md">
-                            C
-                          </div>
-                        )}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between">
-                          <h3 className="text-sm font-bold text-white truncate">{p.nome}</h3>
-                          <span className={clsx(
-                            "px-2 py-0.5 rounded-md text-[10px] uppercase font-bold",
-                            isBench ? "bg-slate-800 text-slate-400" : "bg-emerald-500/20 text-emerald-400 border border-emerald-500/20"
-                          )}>
-                            {isBench ? 'Reserva' : p.pos_nome}
-                          </span>
-                        </div>
-                        <p className="text-xs text-slate-500 font-mono">C$ {p.preco.toFixed(1)} • {p.pontos_esperados.toFixed(1)} pt proj.</p>
-                      </div>
-                    </div>
-
-                    {/* Destaque (Capitão ou Reserva) */}
-                    {(meta.capitao_motivo || meta.reserva_motivo) && (
-                      <div className={clsx(
-                        "p-2.5 rounded-xl border text-xs leading-relaxed",
-                        meta.capitao_motivo ? "bg-amber-500/10 border-amber-500/20 text-amber-200/90" : "bg-indigo-500/10 border-indigo-500/20 text-indigo-300"
-                      )}>
-                        <strong className="block mb-0.5">{meta.capitao_motivo ? "👑 Especial Capitão:" : "🛡️ Opção de Banco:"}</strong>
-                        {meta.capitao_motivo || meta.reserva_motivo}
-                      </div>
-                    )}
-
-                    {/* Info do Confronto */}
-                    <div className="bg-slate-900/50 rounded-xl p-3 border border-white/5 space-y-2">
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="text-slate-400">Confronto:</span>
-                        <span className="text-slate-200 font-medium">vs {meta.adv_name || 'Adversário'} ({meta.is_home ? 'Casa' : 'Fora'})</span>
-                      </div>
-                      {meta.difficulty_reason && (
-                        <div className="flex items-center justify-between text-[10px]">
-                          <span className="text-slate-400">Nível do Jogo:</span>
-                          <span className="text-slate-300 bg-slate-800 px-1.5 py-0.5 rounded">{meta.difficulty_reason}</span>
-                        </div>
-                      )}
-                      {meta.reasons && meta.reasons.length > 0 && (
-                        <div className="pt-2 mt-2 border-t border-white/5">
-                          <ul className="text-[10px] text-slate-400 space-y-1 list-disc pl-3">
-                            {meta.reasons.map((r: string, idx: number) => (
-                              <li key={idx}>{r}</li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
 
       </div>
 
