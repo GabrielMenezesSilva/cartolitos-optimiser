@@ -24,7 +24,7 @@ export function PlayerCard({ player, isCaptain = false, delay = 0, className, is
             animate={{ opacity: 1, scale: 1, y: 0 }}
             transition={{ delay: delay * 0.08, type: 'spring', stiffness: 200, damping: 15 }}
             className={cn("flex flex-col items-center cursor-pointer select-none", className)}
-            style={{ position: 'relative', zIndex: hovered ? 100 : 1, isolation: 'isolate' }}
+            style={{ position: 'relative', zIndex: hovered ? 999 : 1, isolation: 'isolate' }}
             onMouseEnter={() => setHovered(true)}
             onMouseLeave={() => setHovered(false)}
         >

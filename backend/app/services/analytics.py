@@ -1102,7 +1102,8 @@ class DataProcessor:
                     "escudo": c_info.get("escudos", {}).get("60x60"),
                     "prob_sg": prob_sg_casa,
                     "adversario": clubes_dict.get(str(vis_id), {}).get("nome", "???"),
-                    "mando": "casa"
+                    "mando": "casa",
+                    "motivo": f"Favorito em casa contra {clubes_dict.get(str(vis_id), {}).get('nome', '???')}. Alta chance de não sofrer gol." if adv_atk_strength_vis < 1.0 else "Probabilidade sólida calculada via força defensiva e mando de campo."
                 })
             # Insert Visitante
             if vis_id and str(vis_id) in clubes_dict:

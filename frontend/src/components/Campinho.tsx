@@ -98,15 +98,14 @@ export function Campinho({ loading, result }: CampinhoProps) {
                         initial={{ opacity: 0, y: 10 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ delay: rowIdx * 0.1 }}
-                        className="flex justify-around items-center w-full"
-                        style={{ zIndex: 10 }}
+                        className="flex justify-around items-center w-full relative"
                     >
                         {row.map((p: any, colIdx: number) => {
                             delayCounter++;
                             const isLeftmost = (colIdx === 0 && row.length > 2);
                             const isRightmost = (colIdx === row.length - 1 && row.length > 2);
                             return (
-                                <div key={p.id} style={{ position: 'relative', zIndex: 10 }}>
+                                <div key={p.id} className="relative">
                                     <PlayerCard
                                         player={p}
                                         isCaptain={p.is_capitao}

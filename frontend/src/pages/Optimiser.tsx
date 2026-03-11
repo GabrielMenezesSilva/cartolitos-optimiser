@@ -502,12 +502,17 @@ export default function Optimiser() {
                       <h4 className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-2">Melhores Defesas (SG)</h4>
                       <div className="grid grid-cols-2 gap-2">
                         {result.meta.top_sgs.slice(0, 4).map((sg: any, idx: number) => (
-                          <div key={idx} className="flex items-center gap-2 bg-black/40 p-2 rounded-lg border border-white/5">
-                            {sg.escudo && <img src={sg.escudo} alt={sg.nome} className="w-5 h-5 object-contain" />}
-                            <div className="flex flex-col">
-                              <span className="text-[10px] font-bold text-white leading-none mb-0.5">{sg.nome}</span>
-                              <span className="text-[8px] text-emerald-400 font-mono">{(sg.prob_sg * 100).toFixed(1)}% de chance</span>
+                          <div key={idx} className="flex flex-col gap-1.5 bg-black/40 p-2 rounded-lg border border-white/5">
+                            <div className="flex items-center gap-2">
+                              {sg.escudo && <img src={sg.escudo} alt={sg.nome} className="w-5 h-5 object-contain" />}
+                              <div className="flex flex-col">
+                                <span className="text-[10px] font-bold text-white leading-none mb-0.5">{sg.nome}</span>
+                                <span className="text-[8px] text-emerald-400 font-mono">{(sg.prob_sg * 100).toFixed(1)}% de chance</span>
+                              </div>
                             </div>
+                            {sg.motivo && (
+                              <p className="text-[9px] text-slate-400 mt-1 leading-snug border-t border-white/5 pt-1.5">{sg.motivo}</p>
+                            )}
                           </div>
                         ))}
                       </div>
