@@ -136,9 +136,9 @@ export function PlayerCard({ player, isCaptain = false, delay = 0, className, is
                         </div>
 
                         {player.reason && (
-                            <div className="mt-3 p-2 bg-white/5 rounded-lg border border-white/5 ml-2">
-                                <p className="text-[10px] text-slate-500 font-bold mb-1 uppercase tracking-tight">Análise do Optimizer</p>
-                                <p className="text-slate-300 italic text-[10px] leading-relaxed">{player.reason}</p>
+                            <div className="mt-3 p-2 bg-black/30 rounded-lg border border-white/10 ml-2">
+                                <p className="text-[10px] text-emerald-400/90 font-black mb-1 uppercase tracking-tight">Análise do Optimizer</p>
+                                <p className="text-slate-200 italic text-[11px] leading-relaxed font-medium">{player.reason}</p>
                             </div>
                         )}
 

@@ -1038,6 +1038,7 @@ class DataProcessor:
                 "metadata_explicativa": explain_dict,
                 "perfil": cluster_label,
                 "consistencia": round(consistency_score, 2),
+                "reason": " • ".join(explain_dict.get("reasons", [])) if explain_dict.get("reasons") else "Análise estatística padrão."
             }
 
             if p['status_id'] == 7:
